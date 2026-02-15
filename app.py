@@ -1,6 +1,8 @@
 import streamlit as st
 import sqlite3
+import pandas as pd
 from datetime import datetime, timedelta
+from io import BytesIO
 
 # --- 1. FUNZIONI DEL DATABASE ---
 def inizializza_db():
@@ -14,7 +16,6 @@ def inizializza_db():
                   data_followup TEXT,
                   data_ordine TEXT,
                   agente TEXT)''')
-    
     try:
         c.execute("ALTER TABLE visite ADD COLUMN data_followup TEXT")
     except: pass
@@ -24,7 +25,6 @@ def inizializza_db():
     try:
         c.execute("ALTER TABLE visite ADD COLUMN agente TEXT")
     except: pass
-    
     conn.commit()
     conn.close()
 
@@ -38,27 +38,19 @@ def salva_visita(cliente, data_visita, nota, data_fup, data_ordine, agente):
 
 def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agente="Tutti"):
     conn = sqlite3.connect('crm_mobile.db')
-    c = conn.cursor()
-    query = "SELECT cliente, data, note, id, agente FROM visite WHERE 1=1"
-    params = []
+    # Carichiamo tutto in un DataFrame Pandas per facilitare l'esportazione
+    query = "SELECT cliente, data as 'Data Visita', note as 'Note', agente as 'Agente', data_ordine FROM visite WHERE 1=1"
+    df = pd.read_sql_query(query, conn)
+    conn.close()
     
     if filtro_testo.strip():
-        query += " AND (cliente LIKE ? OR note LIKE ?)"
-        params.extend([f"%{filtro_testo}%", f"%{filtro_testo}%"])
-    
+        df = df[df['cliente'].str.contains(filtro_testo, case=False) | df['Note'].str.contains(filtro_testo, case=False)]
     if data_inizio and data_fine:
-        query += " AND data_ordine BETWEEN ? AND ?"
-        params.extend([data_inizio.strftime("%Y-%m-%d"), data_fine.strftime("%Y-%m-%d")])
-    
+        df = df[(df['data_ordine'] >= data_inizio.strftime("%Y-%m-%d")) & (df['data_ordine'] <= data_fine.strftime("%Y-%m-%d"))]
     if filtro_agente != "Tutti":
-        query += " AND agente = ?"
-        params.append(filtro_agente)
-        
-    query += " ORDER BY data_ordine DESC, id DESC"
-    c.execute(query, params)
-    dati = c.fetchall()
-    conn.close()
-    return dati
+        df = df[df['Agente'] == filtro_agente]
+    
+    return df.sort_values(by='data_ordine', ascending=False)
 
 def carica_scadenze_oggi():
     conn = sqlite3.connect('crm_mobile.db')
@@ -69,101 +61,80 @@ def carica_scadenze_oggi():
     conn.close()
     return dati
 
-# --- 2. GESTIONE SALVATAGGIO E PULIZIA ---
+# --- 2. GESTIONE SALVATAGGIO ---
 def gestisci_salvataggio():
-    cliente = st.session_state.cliente_key
-    note = st.session_state.note_key
-    agente = st.session_state.agente_key
-    data_sel = st.session_state.data_key
-    reminder = st.session_state.reminder_key
-
-    if cliente and note:
-        data_f = data_sel.strftime("%d/%m/%Y")
-        data_ordine = data_sel.strftime("%Y-%m-%d")
-        data_fup_db = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if reminder else ""
+    if st.session_state.cliente_key and st.session_state.note_key:
+        data_f = st.session_state.data_key.strftime("%d/%m/%Y")
+        data_ordine = st.session_state.data_key.strftime("%Y-%m-%d")
+        data_fup_db = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if st.session_state.reminder_key else ""
         
-        salva_visita(cliente, data_f, note, data_fup_db, data_ordine, agente)
+        salva_visita(st.session_state.cliente_key, data_f, st.session_state.note_key, data_fup_db, data_ordine, st.session_state.agente_key)
         
         st.session_state.cliente_key = ""
         st.session_state.note_key = ""
         st.session_state.reminder_key = False
-        st.toast(f"✅ Visita salvata per {agente}!")
+        st.toast("✅ Visita salvata!")
     else:
-        st.error("⚠️ Inserisci Nome Cliente e Note!")
+        st.error("⚠️ Compila i campi obbligatori!")
 
-# --- 3. INTERFACCIA UTENTE ---
+# --- 3. INTERFACCIA ---
 st.set_page_config(page_title="CRM Agenti", page_icon="💼", layout="centered")
 inizializza_db()
 
 LISTA_AGENTI = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
 
-# Titolo pulito in alto
 st.title("💼 CRM Visite Agenti")
 
-# Sezione Scadenze
+# Scadenze
 scadenze = carica_scadenze_oggi()
 if scadenze:
-    with st.container():
-        st.error("🔔 FOLLOW-UP DA FARE OGGI:")
-        for s in scadenze:
-            st.write(f"📞 **{s[0]}** (Agente: {s[2]})")
-    st.divider()
+    with st.error("🔔 FOLLOW-UP DA FARE:"):
+        for s in scadenze: st.write(f"📞 **{s[0]}** ({s[2]})")
 
-# Inserimento Nuova Visita
+# Inserimento
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
-    st.text_input("Nome Cliente / Azienda", key="cliente_key")
-    
+    st.text_input("Nome Cliente", key="cliente_key")
     c1, c2 = st.columns(2)
-    with c1:
-        st.date_input("Data visita", datetime.now(), key="data_key")
-    with c2:
-        st.selectbox("Seleziona Agente", LISTA_AGENTI, key="agente_key")
-    
-    st.text_area("Note del colloquio", key="note_key")
-    st.checkbox("Pianifica Follow-up tra 7gg", key="reminder_key")
-    
-    st.button("💾 SALVA E PULISCI", on_click=gestisci_salvataggio, use_container_width=True)
+    with c1: st.date_input("Data", datetime.now(), key="data_key")
+    with c2: st.selectbox("Agente", LISTA_AGENTI, key="agente_key")
+    st.text_area("Note", key="note_key")
+    st.checkbox("Follow-up tra 7gg", key="reminder_key")
+    st.button("💾 SALVA", on_click=gestisci_salvataggio, use_container_width=True)
 
 st.divider()
 
-# Ricerca e Filtri
-st.subheader("🔍 Filtra Archivio")
+# Archivio e Export
+st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
+with f1: t_ricerca = st.text_input("Cerca...")
+with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=30), datetime.now()])
+with f3: f_agente = st.selectbox("Agente", ["Tutti"] + LISTA_AGENTI)
 
-with f1:
-    testo_ricerca = st.text_input("Cerca nome o parola...")
-with f2:
-    periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=30), datetime.now()])
-with f3:
-    filtro_agente_sel = st.selectbox("Filtra Agente", ["Tutti"] + LISTA_AGENTI)
+d_ini, d_fin = (periodo[0], periodo[1]) if isinstance(periodo, list) and len(periodo) == 2 else (None, None)
+df_visite = carica_visite(t_ricerca, d_ini, d_fin, f_agente)
 
-d_inizio, d_fine = None, None
-if isinstance(periodo, list) and len(periodo) == 2:
-    d_inizio, d_fine = periodo
+# TASTO EXCEL
+if not df_visite.empty:
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_visite.drop(columns=['data_ordine']).to_excel(writer, index=False, sheet_name='Visite')
+    
+    st.download_button(
+        label="📊 SCARICA REPORT EXCEL",
+        data=output.getvalue(),
+        file_name=f"report_visite_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
 
-elenco_visite = carica_visite(testo_ricerca, d_inizio, d_fine, filtro_agente_sel)
+    for _, row in df_visite.iterrows():
+        with st.expander(f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']}"):
+            st.write(f"**Note:** {row['Note']}")
 
-if not elenco_visite:
-    st.info("Nessuna visita trovata.")
-else:
-    st.caption(f"Visite trovate: {len(elenco_visite)}")
-    for v in elenco_visite:
-        with st.expander(f"👤 {v[4]} | {v[1]} - {v[0]}"):
-            st.write(f"**Note:** {v[2]}")
-            if st.button(f"🗑️ Elimina", key=f"del_{v[3]}"):
-                conn = sqlite3.connect('crm_mobile.db')
-                c = conn.cursor()
-                c.execute("DELETE FROM visite WHERE id = ?", (v[3],))
-                conn.commit()
-                conn.close()
-                st.rerun()
-
-# --- LOGO IN BASSO A DESTRA (Footer) ---
-st.write("") 
+# Footer Logo
+st.write("")
 st.divider()
-col_f1, col_f2 = st.columns([5, 1])
-with col_f2:
-    try:
-        st.image("logo.jpeg", use_container_width=True)
-    except:
-        pass
+cf1, cf2 = st.columns([5, 1])
+with cf2:
+    try: st.image("logo.jpeg", use_container_width=True)
+    except: pass
