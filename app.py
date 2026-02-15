@@ -38,17 +38,21 @@ def salva_visita():
         conn = sqlite3.connect('crm_mobile.db')
         c = conn.cursor()
         
-        data_visita = s.data_key.strftime("%d/%m/%Y")
+        # Date per il salvataggio
+        data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
         data_ord = s.data_key.strftime("%Y-%m-%d")
         
-        # --- LOGICA FOLLOW UP (7 o 30 GIORNI) ---
+        # --- LOGICA FOLLOW UP INTELLIGENTE ---
+        # Calcola la scadenza partendo dalla DATA DELLA VISITA (s.data_key)
         scelta = s.get('fup_opt', 'No')
+        data_fup = ""
+        
         if scelta == "7 gg":
-            data_fup = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+            data_scadenza = s.data_key + timedelta(days=7)
+            data_fup = data_scadenza.strftime("%Y-%m-%d")
         elif scelta == "30 gg":
-            data_fup = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
-        else:
-            data_fup = ""
+            data_scadenza = s.data_key + timedelta(days=30)
+            data_fup = data_scadenza.strftime("%Y-%m-%d")
         # ----------------------------------------
 
         lat = s.get('lat_val', "")
@@ -57,16 +61,17 @@ def salva_visita():
         c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                      data_followup, data_ordine, agente, latitudine, longitudine) 
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                  (cliente, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, data_visita, note, data_fup, data_ord, s.agente_key, lat, lon))
+                  (cliente, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, data_visita_fmt, note, data_fup, data_ord, s.agente_key, lat, lon))
         conn.commit()
         conn.close()
         
         # Reset
         s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
-        s.lat_val = ""; s.lon_val = ""; s.fup_opt = "No" # Rimette a No
+        s.lat_val = ""; s.lon_val = ""; s.fup_opt = "No" 
         if 'gps_temp' in s: del s['gps_temp']
         
         st.toast("✅ Visita salvata!")
+        st.rerun() # Ricarica per aggiornare eventuali scadenze
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
@@ -87,7 +92,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # GPS
+    # GPS Logic
     loc_data = get_geolocation()
     if loc_data:
         if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
@@ -127,42 +132,51 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     
     st.text_area("Note", key="note_key", height=150)
     
-    # --- NUOVA SELEZIONE FOLLOW UP ---
-    st.write("📅 **Pianifica Ricontatto:**")
+    # Selezione Follow Up Orizzontale
+    st.write("📅 **Pianifica Ricontatto (dalla data visita):**")
     st.radio("Scadenza", ["No", "7 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
 
-# --- SEZIONE AUTOMATICA SCADENZE (Sempre visibile se ci sono scadenze) ---
+# --- SEZIONE AUTOMATICA SCADENZE (ALERT) ---
 conn = sqlite3.connect('crm_mobile.db')
 oggi = datetime.now().strftime("%Y-%m-%d")
-# Seleziona visite con follow up impostato E data scaduta (o oggi)
-df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}'", conn)
+# Logica: Data followup non vuota E minore o uguale a oggi
+df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
 conn.close()
 
 if not df_scadenze.empty:
-    st.warning(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE OGGI!**")
+    st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
         icon = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
-        col_txt, col_btn = st.columns([4, 1])
-        with col_txt:
-            st.write(f"**{icon} {row['cliente']}** ({row['localita']})")
-            st.caption(f"Nota: {row['note']}")
-        with col_btn:
-            # Tasto Fatto
-            if st.button("✅", key=f"fatto_{row['id']}", help="Segna come completato"):
-                conn = sqlite3.connect('crm_mobile.db')
-                c = conn.cursor()
-                # Rimuove la data di follow up
-                c.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
-                conn.commit()
-                conn.close()
-                st.rerun()
+        
+        # Calcolo giorni di ritardo
+        try:
+            data_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
+            data_oggi_dt = datetime.strptime(oggi, "%Y-%m-%d")
+            giorni_ritardo = (data_oggi_dt - data_scad).days
+            msg_ritardo = "Scaduto OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
+        except:
+            msg_ritardo = "Scaduto"
+
+        with st.container():
+            col_txt, col_btn = st.columns([4, 1])
+            with col_txt:
+                st.markdown(f"**{icon} {row['cliente']}** - {row['localita']}")
+                st.caption(f"📅 **{msg_ritardo}** | Note: {row['note']}")
+            with col_btn:
+                if st.button("✅", key=f"fatto_{row['id']}", help="Segna come fatto"):
+                    conn = sqlite3.connect('crm_mobile.db')
+                    c = conn.cursor()
+                    c.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
     st.divider()
 
-# --- RICERCA ---
+# --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 with f1: t_ricerca = st.text_input("Cerca...")
@@ -195,10 +209,33 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
                 if row['latitudine']:
                     link = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
                     st.markdown(f"[📍 Mappa]({link})")
-                if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
-                    conn = sqlite3.connect('crm_mobile.db'); c = conn.cursor()
-                    c.execute("DELETE FROM visite WHERE id = ?", (row['id'],)); conn.commit(); conn.close()
-                    st.rerun()
+                
+                # --- TASTO ELIMINA CON SICUREZZA ---
+                col_del_btn, col_del_confirm = st.columns([1, 4])
+                
+                # Tasto Iniziale
+                if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
+                    st.session_state[f"confirm_del_{row['id']}"] = True
+                
+                # Box di Conferma
+                if st.session_state.get(f"confirm_del_{row['id']}", False):
+                    st.error("⚠️ Sei sicuro di voler eliminare questa visita?")
+                    c_yes, c_no = st.columns(2)
+                    with c_yes:
+                        if st.button("SÌ, ELIMINA", key=f"yes_del_{row['id']}", use_container_width=True):
+                            conn = sqlite3.connect('crm_mobile.db')
+                            c = conn.cursor()
+                            c.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
+                            conn.commit()
+                            conn.close()
+                            # Reset stato
+                            st.session_state[f"confirm_del_{row['id']}"] = False
+                            st.rerun()
+                    with c_no:
+                        if st.button("NO, ANNULLA", key=f"no_del_{row['id']}", use_container_width=True):
+                            st.session_state[f"confirm_del_{row['id']}"] = False
+                            st.rerun()
+                # -----------------------------------
     else:
         st.info("Nessuna visita trovata.")
 else:
