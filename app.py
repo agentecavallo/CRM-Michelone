@@ -13,15 +13,19 @@ def inizializza_db():
                   cliente TEXT, 
                   localita TEXT,
                   provincia TEXT,
+                  tipo_cliente TEXT,
                   data TEXT, 
                   note TEXT,
                   data_followup TEXT,
                   data_ordine TEXT,
                   agente TEXT)''')
     
+    # Aggiornamenti colonne per versioni precedenti
     try: c.execute("ALTER TABLE visite ADD COLUMN localita TEXT")
     except: pass
     try: c.execute("ALTER TABLE visite ADD COLUMN provincia TEXT")
+    except: pass
+    try: c.execute("ALTER TABLE visite ADD COLUMN tipo_cliente TEXT")
     except: pass
     try: c.execute("ALTER TABLE visite ADD COLUMN data_followup TEXT")
     except: pass
@@ -37,6 +41,7 @@ def salva_visita():
     cliente = st.session_state.cliente_key
     localita = st.session_state.localita_key.upper()
     provincia = st.session_state.prov_key.upper()
+    tipo = st.session_state.tipo_key
     note = st.session_state.note_key
     agente = st.session_state.agente_key
     data_sel = st.session_state.data_key
@@ -49,9 +54,9 @@ def salva_visita():
         data_ordine = data_sel.strftime("%Y-%m-%d")
         data_fup_db = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if reminder else ""
         
-        c.execute("""INSERT INTO visite (cliente, localita, provincia, data, note, data_followup, data_ordine, agente) 
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)""", 
-                  (cliente, localita, provincia, data_f, note, data_fup_db, data_ordine, agente))
+        c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, data_followup, data_ordine, agente) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                  (cliente, localita, provincia, tipo, data_f, note, data_fup_db, data_ordine, agente))
         conn.commit()
         conn.close()
         
@@ -66,12 +71,13 @@ def salva_visita():
 
 def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agente="Seleziona...", solo_followup=False):
     conn = sqlite3.connect('crm_mobile.db')
-    query = "SELECT cliente, localita, provincia, data as 'Data Visita', note as 'Note', agente as 'Agente', data_ordine, data_followup, id FROM visite WHERE 1=1"
+    query = "SELECT cliente, localita, provincia, tipo_cliente, data as 'Data Visita', note as 'Note', agente as 'Agente', data_ordine, data_followup, id FROM visite WHERE 1=1"
     df = pd.read_sql_query(query, conn)
     conn.close()
     
     df['localita'] = df['localita'].fillna("-")
     df['provincia'] = df['provincia'].fillna("-")
+    df['tipo_cliente'] = df['tipo_cliente'].fillna("Cliente")
 
     if solo_followup:
         oggi = datetime.now().strftime("%Y-%m-%d")
@@ -113,16 +119,18 @@ st.title("💼 CRM Visite Agenti")
 # Inserimento
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     st.text_input("Nome Cliente", key="cliente_key")
-    cloc, cprov = st.columns([3, 1])
-    with cloc: st.text_input("Località", key="localita_key")
-    with cprov: st.text_input("Prov.", key="prov_key", max_chars=2)
+    
+    # Campo Tipo Cliente (Punto 4)
+    st.radio("Stato Cliente", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
+    
+    st.text_input("Località", key="localita_key")
+    st.text_input("Provincia", key="prov_key", max_chars=2)
+    
     c1, c2 = st.columns(2)
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", LISTA_AGENTI, key="agente_key")
     
-    # --- CAMPO NOTE ALLUNGATO (height=200) ---
     st.text_area("Note", key="note_key", height=200)
-    
     st.checkbox("Pianifica Follow-up (7gg)", key="reminder_key")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
@@ -133,7 +141,8 @@ df_fu = carica_visite(solo_followup=True)
 if not df_fu.empty:
     st.subheader("📅 DA RICONTATTARE")
     for _, row in df_fu.iterrows():
-        with st.warning(f"📞 {row['cliente']} - {row['localita']} ({row['provincia']})"):
+        icona = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
+        with st.warning(f"{icona} {row['cliente']} - {row['localita']} ({row['provincia']})"):
             st.write(f"**Nota:** {row['Note']}")
             if st.button(f"✅ Fatto", key=f"fu_{row['id']}"): 
                 conn = sqlite3.connect('crm_mobile.db')
@@ -164,9 +173,12 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
         except: st.error("Errore Excel")
 
         for _, row in df_visite.iterrows():
-            titolo = f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']} ({row['localita']} - {row['provincia']})"
+            icona = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
+            titolo = f"{icona} {row['Agente']} | {row['Data Visita']} - {row['cliente']} ({row['localita']})"
             with st.expander(titolo):
+                st.write(f"**Stato:** {row['tipo_cliente']}")
                 st.write(f"**Note:** {row['Note']}")
+                
                 if st.button(f"🗑️ Elimina", key=f"pre_del_{row['id']}"):
                     st.session_state[f"confirm_{row['id']}"] = True
                 if st.session_state.get(f"confirm_{row['id']}", False):
