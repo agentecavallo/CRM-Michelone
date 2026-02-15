@@ -1,5 +1,7 @@
 streamlit
 pandas
-xlsxwriter
+gspread
+oauth2client
 streamlit-js-eval
 requests
+XlsxWriter
