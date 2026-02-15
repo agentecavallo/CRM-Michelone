@@ -75,13 +75,14 @@ def salva_visita():
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
 # --- 2. INTERFACCIA ---
-st.set_page_config(page_title="CRM Agenti", page_icon="💼", layout="centered")
+# Modificato il titolo della pagina nel browser
+st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 inizializza_db()
 
-st.title("💼 CRM Visite Agenti")
+# Modificato il titolo principale dell'App
+st.title("💼 CRM Michelone")
 
-# --- MODULO INSERIMENTO (Ora parte CHIUSO) ---
-# Modifica qui: expanded=False invece di True
+# --- MODULO INSERIMENTO (Parte CHIUSO) ---
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
