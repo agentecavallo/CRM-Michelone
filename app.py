@@ -16,11 +16,6 @@ def inizializza_db():
                   tipo_cliente TEXT, data TEXT, note TEXT,
                   data_followup TEXT, data_ordine TEXT, agente TEXT,
                   latitudine TEXT, longitudine TEXT)''')
-    
-    colonne = ["localita", "provincia", "tipo_cliente", "data_followup", "data_ordine", "agente", "latitudine", "longitudine"]
-    for col in colonne:
-        try: c.execute(f"ALTER TABLE visite ADD COLUMN {col} TEXT")
-        except: pass
     conn.commit()
     conn.close()
 
@@ -29,50 +24,24 @@ def salva_visita():
     if s.cliente_key.strip() != "" and s.note_key.strip() != "":
         conn = sqlite3.connect('crm_mobile.db')
         c = conn.cursor()
-        data_ordine = s.data_key.strftime("%Y-%m-%d")
         data_fup = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if s.reminder_key else ""
-        
         c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                      data_followup, data_ordine, agente, latitudine, longitudine) 
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
                   (s.cliente_key, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, 
-                   s.data_key.strftime("%d/%m/%Y"), s.note_key, data_fup, data_ordine, 
+                   s.data_key.strftime("%d/%m/%Y"), s.note_key, data_fup, s.data_key.strftime("%Y-%m-%d"), 
                    s.agente_key, s.get('lat_val', ""), s.get('lon_val', "")))
         conn.commit()
         conn.close()
-        # Reset manuale per sicurezza
-        st.session_state.cliente_key = ""
-        st.session_state.localita_key = ""
-        st.session_state.prov_key = ""
-        st.session_state.note_key = ""
-        st.session_state.lat_val = ""
-        st.session_state.lon_val = ""
-        st.toast("✅ Salvato con successo!")
-    else: st.error("⚠️ Inserisci Cliente e Note!")
-
-def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agente="Seleziona...", solo_followup=False):
-    conn = sqlite3.connect('crm_mobile.db')
-    df = pd.read_sql_query("SELECT * FROM visite", conn)
-    conn.close()
-    df[['localita', 'provincia', 'latitudine', 'longitudine']] = df[['localita', 'provincia', 'latitudine', 'longitudine']].fillna("")
-    if solo_followup:
-        oggi = datetime.now().strftime("%Y-%m-%d")
-        return df[(df['data_followup'] != "") & (df['data_followup'] <= oggi)]
-    if filtro_testo.strip():
-        df = df[df.apply(lambda row: filtro_testo.lower() in str(row).lower(), axis=1)]
-    if data_inizio and data_fine:
-        df = df[(df['data_ordine'] >= data_inizio.strftime("%Y-%m-%d")) & (df['data_ordine'] <= data_fine.strftime("%Y-%m-%d"))]
-    if filtro_agente not in ["Tutti", "Seleziona..."]:
-        df = df[df['agente'] == filtro_agente]
-    return df.sort_values(by='data_ordine', ascending=False)
+        # Reset
+        s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
+        s.lat_val = ""; s.lon_val = ""; s.reminder_key = False
+        st.toast("✅ Salvato!")
+    else: st.error("⚠️ Compila i campi obbligatori!")
 
 # --- 2. INTERFACCIA ---
-st.set_page_config(page_title="CRM Agenti", page_icon="💼", layout="centered")
+st.set_page_config(page_title="CRM Agenti", page_icon="💼")
 inizializza_db()
-
-# Inizializzazione chiavi nello state se non esistono
-if 'localita_key' not in st.session_state: st.session_state.localita_key = ""
-if 'prov_key' not in st.session_state: st.session_state.prov_key = ""
 
 st.title("💼 CRM Visite Agenti")
 
@@ -80,35 +49,36 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
     
-    # TASTO GPS MIGLIORATO
-    if st.button("📍 RILEVA POSIZIONE E GPS", use_container_width=True):
-        loc = get_geolocation()
-        if loc:
-            lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
-            st.session_state.lat_val = str(lat)
-            st.session_state.lon_val = str(lon)
+    st.markdown("---")
+    st.write("📍 **Posizione GPS**")
+    
+    # Questo comando deve stare da solo per funzionare bene
+    loc_data = get_geolocation()
+    
+    if loc_data:
+        lat = loc_data['coords']['latitude']
+        lon = loc_data['coords']['longitude']
+        st.session_state.lat_val = str(lat)
+        st.session_state.lon_val = str(lon)
+        
+        if st.button("🔄 Recupera Indirizzo da GPS"):
             try:
-                # Servizio di geocodifica
                 r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", 
-                                 headers={'User-Agent': 'CRM_App_Michelone'}).json()
-                addr = r.get('address', {})
-                
-                # Cerchiamo la città tra varie etichette possibili
-                citta = addr.get('city', addr.get('town', addr.get('village', addr.get('suburb', ''))))
-                prov = addr.get('county', addr.get('state', ''))
-                
+                                 headers={'User-Agent': 'Mozilla/5.0'}).json()
+                a = r.get('address', {})
+                citta = a.get('city', a.get('town', a.get('village', '')))
+                prov = a.get('county', a.get('state', ''))[:2].upper()
                 if citta: st.session_state.localita_key = citta.upper()
-                if prov: st.session_state.prov_key = prov[:2].upper()
-                st.success(f"📍 Posizione rilevata: {citta}")
+                if prov: st.session_state.prov_key = prov
+                st.success(f"Trovato: {citta}")
             except:
-                st.warning("Coordinate catturate, ma non riesco a trovare il nome della città. Inseriscila a mano.")
+                st.error("GPS attivo, ma non trovo l'indirizzo. Scrivilo a mano.")
+    else:
+        st.info("Attendi il rilevamento GPS o scrivi l'indirizzo sotto.")
 
-    # DISPOSIZIONE OTTIMIZZATA
-    col_loc, col_prov = st.columns([4, 1])
-    with col_loc:
-        st.text_input("Località", key="localita_key")
-    with col_prov:
-        st.text_input("Prov.", key="prov_key", max_chars=2)
+    c_loc, c_prov = st.columns([4, 1])
+    with c_loc: st.text_input("Località", key="localita_key")
+    with c_prov: st.text_input("Prov.", key="prov_key", max_chars=2)
     
     c1, c2 = st.columns(2)
     with c1: st.date_input("Data", datetime.now(), key="data_key")
@@ -120,32 +90,26 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
 
 st.divider()
 
-# --- RICERCA E ARCHIVIO ---
-st.subheader("🔍 Ricerca")
-f1, f2, f3 = st.columns([1.5, 1, 1])
-with f1: t_ricerca = st.text_input("Cerca...")
-with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
-with f3: f_agente = st.selectbox("Agente", ["Seleziona...", "Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+# --- RICERCA ---
+st.subheader("🔍 Archivio")
+# Caricamento dati semplificato per ricerca
+conn = sqlite3.connect('crm_mobile.db')
+df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
+conn.close()
 
-if t_ricerca.strip() != "" or f_agente != "Seleziona...":
-    d_i, d_f = (periodo[0], periodo[1]) if isinstance(periodo, list) and len(periodo) == 2 else (None, None)
-    df = carica_visite(t_ricerca, d_i, d_f, f_agente)
-    
-    if not df.empty:
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
-        st.download_button("📊 SCARICA EXCEL", output.getvalue(), "report_crm.xlsx", use_container_width=True)
+t_ricerca = st.text_input("Filtra per nome o città...")
+if t_ricerca:
+    df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
 
-        for _, row in df.iterrows():
-            icon = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
-            with st.expander(f"{icon} {row['agente']} | {row['data']} - {row['cliente']}"):
-                st.write(f"**📍 Località:** {row['localita']} ({row['provincia']})")
-                st.write(f"**📝 Note:** {row['note']}")
-                if row['latitudine']:
-                    map_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
-                    st.markdown(f"[📍 Apri su Google Maps]({map_url})")
-                if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
-                    conn = sqlite3.connect('crm_mobile.db'); c = conn.cursor()
-                    c.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                    conn.commit(); conn.close(); st.rerun()
+if not df.empty:
+    for _, row in df.iterrows():
+        with st.expander(f"{row['agente']} | {row['data']} - {row['cliente']}"):
+            st.write(f"Città: {row['localita']} ({row['provincia']})")
+            st.write(f"Note: {row['note']}")
+            if row['latitudine'] and row['longitudine']:
+                map_url = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
+                st.markdown(f"[📍 Vai su Mappe]({map_url})")
+            if st.button("Elimina", key=f"del_{row['id']}"):
+                conn = sqlite3.connect('crm_mobile.db'); c = conn.cursor()
+                c.execute("DELETE FROM visite WHERE id = ?", (row['id'],)); conn.commit(); conn.close()
+                st.rerun()
