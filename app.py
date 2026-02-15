@@ -28,13 +28,34 @@ def inizializza_db():
     conn.commit()
     conn.close()
 
-def salva_visita(cliente, data_visita, nota, data_fup, data_ordine, agente):
-    conn = sqlite3.connect('crm_mobile.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO visite (cliente, data, note, data_followup, data_ordine, agente) VALUES (?, ?, ?, ?, ?, ?)", 
-              (cliente, data_visita, nota, data_fup, data_ordine, agente))
-    conn.commit()
-    conn.close()
+def salva_visita():
+    # Recuperiamo i dati dallo state
+    cliente = st.session_state.cliente_key
+    note = st.session_state.note_key
+    agente = st.session_state.agente_key
+    data_sel = st.session_state.data_key
+    reminder = st.session_state.reminder_key
+
+    if cliente.strip() != "" and note.strip() != "":
+        conn = sqlite3.connect('crm_mobile.db')
+        c = conn.cursor()
+        
+        data_f = data_sel.strftime("%d/%m/%Y")
+        data_ordine = data_sel.strftime("%Y-%m-%d")
+        data_fup_db = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if reminder else ""
+        
+        c.execute("INSERT INTO visite (cliente, data, note, data_followup, data_ordine, agente) VALUES (?, ?, ?, ?, ?, ?)", 
+                  (cliente, data_f, note, data_fup_db, data_ordine, agente))
+        conn.commit()
+        conn.close()
+        
+        # Pulizia campi corretta
+        st.session_state.cliente_key = ""
+        st.session_state.note_key = ""
+        st.session_state.reminder_key = False
+        st.success("✅ Visita salvata con successo!")
+    else:
+        st.error("⚠️ Inserisci almeno Cliente e Note!")
 
 def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agente="Seleziona...", solo_followup=False):
     conn = sqlite3.connect('crm_mobile.db')
@@ -44,8 +65,7 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
     
     if solo_followup:
         oggi = datetime.now().strftime("%Y-%m-%d")
-        df = df[df['data_followup'] != ""]
-        df = df[df['data_followup'] <= oggi]
+        df = df[(df['data_followup'] != "") & (df['data_followup'] <= oggi)]
         return df
     
     if filtro_testo.strip():
@@ -54,7 +74,7 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
     if data_inizio and data_fine:
         df = df[(df['data_ordine'] >= data_inizio.strftime("%Y-%m-%d")) & (df['data_ordine'] <= data_fine.strftime("%Y-%m-%d"))]
     
-    if filtro_agente != "Tutti" and filtro_agente != "Seleziona...":
+    if filtro_agente not in ["Tutti", "Seleziona..."]:
         df = df[df['Agente'] == filtro_agente]
     
     return df.sort_values(by='data_ordine', ascending=False)
@@ -65,7 +85,6 @@ def risolvi_followup(id_visita):
     c.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (id_visita,))
     conn.commit()
     conn.close()
-    st.rerun()
 
 # --- 2. INTERFACCIA ---
 st.set_page_config(page_title="CRM Agenti", page_icon="💼", layout="centered")
@@ -83,26 +102,21 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     with c2: st.selectbox("Agente", LISTA_AGENTI, key="agente_key")
     st.text_area("Note", key="note_key")
     st.checkbox("Pianifica Follow-up (7gg)", key="reminder_key")
-    if st.button("💾 SALVA VISITA", use_container_width=True):
-        if st.session_state.cliente_key and st.session_state.note_key:
-            salva_visita(st.session_state.cliente_key, st.session_state.data_key.strftime("%d/%m/%Y"), st.session_state.note_key, (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if st.session_state.reminder_key else "", st.session_state.data_key.strftime("%Y-%m-%d"), st.session_state.agente_key)
-            st.session_state.cliente_key = ""
-            st.session_state.note_key = ""
-            st.toast("✅ Salvato!")
-            st.rerun()
-        else:
-            st.error("Mancano dati!")
+    # Usiamo on_click per gestire il salvataggio in modo pulito
+    st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
 
-# Follow-up
+# Sezione Follow-up
 df_fu = carica_visite(solo_followup=True)
 if not df_fu.empty:
     st.subheader("📅 DA RICONTATTARE")
     for _, row in df_fu.iterrows():
         with st.warning(f"📞 {row['cliente']} ({row['Agente']})"):
             st.write(f"**Nota:** {row['Note']}")
-            if st.button(f"✅ Fatto", key=f"fu_{row['id']}"): risolvi_followup(row['id'])
+            if st.button(f"✅ Fatto", key=f"fu_{row['id']}"): 
+                risolvi_followup(row['id'])
+                st.rerun()
     st.divider()
 
 # Archivio
@@ -112,17 +126,20 @@ with f1: t_ricerca = st.text_input("Cerca nome o parola...")
 with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 with f3: f_agente = st.selectbox("Visualizza Agente", ["Seleziona...", "Tutti"] + LISTA_AGENTI)
 
-# MOSTRA SE: Scrivi qualcosa OPPURE selezioni Tutti o un Agente
 if t_ricerca.strip() != "" or f_agente != "Seleziona...":
     d_ini, d_fin = (periodo[0], periodo[1]) if isinstance(periodo, list) and len(periodo) == 2 else (None, None)
     df_visite = carica_visite(t_ricerca, d_ini, d_fin, f_agente)
     
     if not df_visite.empty:
+        # Tasto Excel
         output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df_visite.drop(columns=['data_ordine', 'id', 'data_followup']).to_excel(writer, index=False, sheet_name='Visite')
-        
-        st.download_button(label="📊 SCARICA EXCEL", data=output.getvalue(), file_name="export_crm.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        try:
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_visite.drop(columns=['data_ordine', 'id', 'data_followup']).to_excel(writer, index=False, sheet_name='Visite')
+            
+            st.download_button(label="📊 SCARICA EXCEL", data=output.getvalue(), file_name="export_crm.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        except:
+            st.error("Errore nella generazione Excel. Verifica requirements.txt")
 
         for _, row in df_visite.iterrows():
             with st.expander(f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']}"):
