@@ -43,7 +43,6 @@ def salva_visita():
         data_ord = s.data_key.strftime("%Y-%m-%d")
         
         # --- LOGICA FOLLOW UP INTELLIGENTE ---
-        # Calcola la scadenza partendo dalla DATA DELLA VISITA (s.data_key)
         scelta = s.get('fup_opt', 'No')
         data_fup = ""
         
@@ -71,7 +70,7 @@ def salva_visita():
         if 'gps_temp' in s: del s['gps_temp']
         
         st.toast("✅ Visita salvata!")
-        st.rerun() # Ricarica per aggiornare eventuali scadenze
+        st.rerun() 
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
@@ -81,8 +80,9 @@ inizializza_db()
 
 st.title("💼 CRM Visite Agenti")
 
-# --- MODULO INSERIMENTO ---
-with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
+# --- MODULO INSERIMENTO (Ora parte CHIUSO) ---
+# Modifica qui: expanded=False invece di True
+with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
     
@@ -132,7 +132,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     
     st.text_area("Note", key="note_key", height=150)
     
-    # Selezione Follow Up Orizzontale
+    # Selezione Follow Up
     st.write("📅 **Pianifica Ricontatto (dalla data visita):**")
     st.radio("Scadenza", ["No", "7 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     
@@ -143,7 +143,6 @@ st.divider()
 # --- SEZIONE AUTOMATICA SCADENZE (ALERT) ---
 conn = sqlite3.connect('crm_mobile.db')
 oggi = datetime.now().strftime("%Y-%m-%d")
-# Logica: Data followup non vuota E minore o uguale a oggi
 df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
 conn.close()
 
@@ -152,7 +151,6 @@ if not df_scadenze.empty:
     for _, row in df_scadenze.iterrows():
         icon = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
         
-        # Calcolo giorni di ritardo
         try:
             data_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             data_oggi_dt = datetime.strptime(oggi, "%Y-%m-%d")
@@ -213,11 +211,9 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
                 # --- TASTO ELIMINA CON SICUREZZA ---
                 col_del_btn, col_del_confirm = st.columns([1, 4])
                 
-                # Tasto Iniziale
                 if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
                     st.session_state[f"confirm_del_{row['id']}"] = True
                 
-                # Box di Conferma
                 if st.session_state.get(f"confirm_del_{row['id']}", False):
                     st.error("⚠️ Sei sicuro di voler eliminare questa visita?")
                     c_yes, c_no = st.columns(2)
@@ -228,14 +224,12 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
                             c.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                             conn.commit()
                             conn.close()
-                            # Reset stato
                             st.session_state[f"confirm_del_{row['id']}"] = False
                             st.rerun()
                     with c_no:
                         if st.button("NO, ANNULLA", key=f"no_del_{row['id']}", use_container_width=True):
                             st.session_state[f"confirm_del_{row['id']}"] = False
                             st.rerun()
-                # -----------------------------------
     else:
         st.info("Nessuna visita trovata.")
 else:
