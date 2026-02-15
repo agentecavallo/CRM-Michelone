@@ -161,11 +161,8 @@ else:
 # --- LOGO IN BASSO A DESTRA (Footer) ---
 st.write("") 
 st.divider()
-
-# Creiamo due colonne: la prima (vuota) occupa l'85% dello spazio, la seconda il 15%
-col_spazio, col_logo_final = st.columns([5, 1])
-
-with col_logo_final:
+col_f1, col_f2 = st.columns([5, 1])
+with col_f2:
     try:
         st.image("logo.jpeg", use_container_width=True)
     except:
