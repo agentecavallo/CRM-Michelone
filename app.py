@@ -20,6 +20,7 @@ def inizializza_db():
     conn.close()
 
 def salva_visita():
+    # Recupero sicuro dei dati dalla sessione
     s = st.session_state
     cliente = s.get('cliente_key', '')
     note = s.get('note_key', '')
@@ -41,11 +42,10 @@ def salva_visita():
         conn.commit()
         conn.close()
         
-        # Reset totale
+        # Reset totale dei campi
         s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
         s.lat_val = ""; s.lon_val = ""; s.reminder_key = False
-        # Puliamo anche eventuali dati temporanei del GPS
-        if 'gps_temp' in s: del s['gps_temp']
+        if 'gps_temp' in s: del s['gps_temp'] # Pulisce dati temporanei GPS
         
         st.toast("✅ Visita salvata!")
     else:
@@ -64,22 +64,24 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     
     st.markdown("---")
 
-    # 1. CAMPI MANUALI (Spostati sopra)
-    col_l, col_p = st.columns([4, 1])
+    # 1. CAMPI MANUALI (CORRETTO ERRORE VARIABILI)
+    # Impostiamo le colonne. Su PC sarà 75% e 25%. Su Mobile si impilano per leggibilità.
+    col_l, col_p = st.columns([3, 1]) 
+    
     with col_l:
         st.text_input("Località", key="localita_key")
+    # Qui c'era l'errore: ora uso "col_p" che è definito sopra
     with col_p:
         st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # 2. LOGICA GPS (Spostata sotto con conferma)
+    # 2. LOGICA GPS (Sotto i campi, con conferma)
     loc_data = get_geolocation()
     
-    # Tasto per avviare la ricerca
+    # Se il GPS rileva qualcosa, mostriamo il tasto
     if loc_data:
         lat = loc_data['coords']['latitude']
         lon = loc_data['coords']['longitude']
         
-        # Tasto principale
         if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
             try:
                 r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", 
@@ -87,12 +89,12 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
                 a = r.get('address', {})
                 citta = a.get('city', a.get('town', a.get('village', '')))
                 
-                # Gestione Roma/Provincia
+                # Gestione Provincia e Roma
                 prov_full = a.get('county', a.get('state', ''))
                 if "Roma" in prov_full or "Rome" in prov_full: prov_sigla = "RM"
                 else: prov_sigla = prov_full[:2].upper()
                 
-                # Salviamo in una variabile temporanea per chiedere conferma
+                # Salviamo in memoria temporanea per chiedere conferma
                 st.session_state['gps_temp'] = {
                     'citta': citta.upper() if citta else "",
                     'prov': prov_sigla,
@@ -102,27 +104,26 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
             except:
                 st.warning("GPS attivo, ma indirizzo non trovato.")
 
-        # 3. BOX DI CONFERMA (Appare solo se abbiamo trovato qualcosa)
+        # Box di conferma (appare solo dopo aver cliccato il tasto sopra)
         if 'gps_temp' in st.session_state:
             dati = st.session_state['gps_temp']
             st.info(f"🛰️ Trovato: **{dati['citta']} ({dati['prov']})**")
             
-            col_conf_1, col_conf_2 = st.columns(2)
-            with col_conf_1:
-                if st.button("✅ SÌ, INSERISCI", use_container_width=True):
+            c_yes, c_no = st.columns(2)
+            with c_yes:
+                if st.button("✅ INSERISCI", use_container_width=True):
                     st.session_state.localita_key = dati['citta']
                     st.session_state.prov_key = dati['prov']
                     st.session_state.lat_val = dati['lat']
                     st.session_state.lon_val = dati['lon']
-                    del st.session_state['gps_temp'] # Nasconde il box dopo la conferma
+                    del st.session_state['gps_temp']
                     st.rerun()
-            with col_conf_2:
+            with c_no:
                 if st.button("❌ ANNULLA", use_container_width=True):
                     del st.session_state['gps_temp']
                     st.rerun()
-
     else:
-        st.caption("📡 In attesa del segnale GPS...")
+        st.caption("📡 Attendi segnale GPS...")
     
     st.markdown("---")
 
