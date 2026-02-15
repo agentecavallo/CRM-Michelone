@@ -42,15 +42,22 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
     df = pd.read_sql_query(query, conn)
     conn.close()
     
+    # Filtro Follow-up (Lista Cose da fare)
     if solo_followup:
         oggi = datetime.now().strftime("%Y-%m-%d")
         df = df[df['data_followup'] != ""]
         df = df[df['data_followup'] <= oggi]
+        return df # Esci subito per la sezione dedicata
     
+    # Filtro Testo
     if filtro_testo.strip():
         df = df[df['cliente'].str.contains(filtro_testo, case=False) | df['Note'].str.contains(filtro_testo, case=False)]
+    
+    # Filtro Periodo
     if data_inizio and data_fine:
         df = df[(df['data_ordine'] >= data_inizio.strftime("%Y-%m-%d")) & (df['data_ordine'] <= data_fine.strftime("%Y-%m-%d"))]
+    
+    # LOGICA "TUTTI": Se è diverso da "Tutti", filtra per l'agente specifico
     if filtro_agente != "Tutti":
         df = df[df['Agente'] == filtro_agente]
     
@@ -61,7 +68,6 @@ def gestisci_salvataggio():
     if st.session_state.cliente_key and st.session_state.note_key:
         data_f = st.session_state.data_key.strftime("%d/%m/%Y")
         data_ordine = st.session_state.data_key.strftime("%Y-%m-%d")
-        # Se checkbox attivo, imposta followup a 7 giorni da oggi
         data_fup_db = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d") if st.session_state.reminder_key else ""
         
         salva_visita(st.session_state.cliente_key, data_f, st.session_state.note_key, data_fup_db, data_ordine, st.session_state.agente_key)
@@ -101,26 +107,25 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
 
 st.divider()
 
-# --- SEZIONE FOLLOW-UP AUTOMATICA ---
+# --- SEZIONE FOLLOW-UP (Priorità) ---
 df_fu = carica_visite(solo_followup=True)
 if not df_fu.empty:
-    st.subheader("📅 DA RICONTATTARE (FOLLOW-UP)")
+    st.subheader("📅 DA RICONTATTARE")
     for _, row in df_fu.iterrows():
         with st.warning(f"📞 {row['cliente']} ({row['Agente']})"):
-            st.write(f"**Nota originale:** {row['Note']}")
-            st.write(f"**Data visita:** {row['Data Visita']}")
-            if st.button(f"✅ Segna come fatto", key=f"fu_{row['id']}"):
+            st.write(f"**Nota:** {row['Note']} | **Visita:** {row['Data Visita']}")
+            if st.button(f"✅ Fatto", key=f"fu_{row['id']}"):
                 risolvi_followup(row['id'])
     st.divider()
 
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Ricerca nell'Archivio")
 f1, f2, f3 = st.columns([1.5, 1, 1])
-with f1: t_ricerca = st.text_input("Cerca cliente o parola...")
+with f1: t_ricerca = st.text_input("Cerca nome o parola...")
 with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=30), datetime.now()])
-with f3: f_agente = st.selectbox("Filtra Agente", ["Tutti"] + LISTA_AGENTI)
+with f3: f_agente = st.selectbox("Seleziona Agente", ["Tutti"] + LISTA_AGENTI)
 
-# Mostra risultati solo se c'è una ricerca attiva
+# MOSTRA RISULTATI: se scrivi qualcosa O se selezioni un agente specifico (diverso da Tutti)
 if t_ricerca.strip() != "" or f_agente != "Tutti":
     d_ini, d_fin = (periodo[0], periodo[1]) if isinstance(periodo, list) and len(periodo) == 2 else (None, None)
     df_visite = carica_visite(t_ricerca, d_ini, d_fin, f_agente)
@@ -131,7 +136,7 @@ if t_ricerca.strip() != "" or f_agente != "Tutti":
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_visite.drop(columns=['data_ordine', 'id', 'data_followup']).to_excel(writer, index=False, sheet_name='Visite')
         
-        st.download_button(label="📊 SCARICA EXCEL", data=output.getvalue(), file_name="export_crm.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button(label="📊 SCARICA EXCEL RISULTATI", data=output.getvalue(), file_name="export_crm.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
 
         for _, row in df_visite.iterrows():
             with st.expander(f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']}"):
@@ -145,6 +150,8 @@ if t_ricerca.strip() != "" or f_agente != "Tutti":
                     st.rerun()
     else:
         st.info("Nessun risultato trovato.")
+else:
+    st.caption("Scrivi un nome o seleziona un agente per vedere lo storico.")
 
 # Footer Logo
 st.write("")
