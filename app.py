@@ -79,7 +79,6 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
         return df
     
     if filtro_testo.strip():
-        # RICERCA POTENZIATA: Cerca in Cliente, Note, Località e Provincia
         df = df[
             df['cliente'].str.contains(filtro_testo, case=False) | 
             df['Note'].str.contains(filtro_testo, case=False) |
@@ -120,7 +119,10 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     c1, c2 = st.columns(2)
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", LISTA_AGENTI, key="agente_key")
-    st.text_area("Note", key="note_key")
+    
+    # --- CAMPO NOTE ALLUNGATO (height=200) ---
+    st.text_area("Note", key="note_key", height=200)
+    
     st.checkbox("Pianifica Follow-up (7gg)", key="reminder_key")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
