@@ -40,8 +40,13 @@ def salva_visita():
                    s.agente_key, s.get('lat_val', ""), s.get('lon_val', "")))
         conn.commit()
         conn.close()
-        s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
-        s.lat_val = ""; s.lon_val = ""; s.reminder_key = False
+        # Reset manuale per sicurezza
+        st.session_state.cliente_key = ""
+        st.session_state.localita_key = ""
+        st.session_state.prov_key = ""
+        st.session_state.note_key = ""
+        st.session_state.lat_val = ""
+        st.session_state.lon_val = ""
         st.toast("✅ Salvato con successo!")
     else: st.error("⚠️ Inserisci Cliente e Note!")
 
@@ -50,11 +55,9 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
     df = pd.read_sql_query("SELECT * FROM visite", conn)
     conn.close()
     df[['localita', 'provincia', 'latitudine', 'longitudine']] = df[['localita', 'provincia', 'latitudine', 'longitudine']].fillna("")
-    
     if solo_followup:
         oggi = datetime.now().strftime("%Y-%m-%d")
         return df[(df['data_followup'] != "") & (df['data_followup'] <= oggi)]
-    
     if filtro_testo.strip():
         df = df[df.apply(lambda row: filtro_testo.lower() in str(row).lower(), axis=1)]
     if data_inizio and data_fine:
@@ -67,29 +70,41 @@ def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agen
 st.set_page_config(page_title="CRM Agenti", page_icon="💼", layout="centered")
 inizializza_db()
 
+# Inizializzazione chiavi nello state se non esistono
+if 'localita_key' not in st.session_state: st.session_state.localita_key = ""
+if 'prov_key' not in st.session_state: st.session_state.prov_key = ""
+
 st.title("💼 CRM Visite Agenti")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
     
+    # TASTO GPS MIGLIORATO
     if st.button("📍 RILEVA POSIZIONE E GPS", use_container_width=True):
         loc = get_geolocation()
         if loc:
             lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
-            st.session_state.lat_val, st.session_state.lon_val = str(lat), str(lon)
+            st.session_state.lat_val = str(lat)
+            st.session_state.lon_val = str(lon)
             try:
-                r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", headers={'User-Agent': 'CRM_App'}).json()
+                # Servizio di geocodifica
+                r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", 
+                                 headers={'User-Agent': 'CRM_App_Michelone'}).json()
                 addr = r.get('address', {})
-                st.session_state.localita_key = addr.get('city', addr.get('town', addr.get('village', ''))).upper()
-                # Cerchiamo di prendere la sigla provincia se disponibile o le prime 2 lettere
-                prov_full = addr.get('county', addr.get('state', ''))
-                st.session_state.prov_key = prov_full[:2].upper()
-                st.success("📍 Posizione acquisita!")
-            except: st.warning("Coordinate GPS prese, ma indirizzo non trovato.")
+                
+                # Cerchiamo la città tra varie etichette possibili
+                citta = addr.get('city', addr.get('town', addr.get('village', addr.get('suburb', ''))))
+                prov = addr.get('county', addr.get('state', ''))
+                
+                if citta: st.session_state.localita_key = citta.upper()
+                if prov: st.session_state.prov_key = prov[:2].upper()
+                st.success(f"📍 Posizione rilevata: {citta}")
+            except:
+                st.warning("Coordinate catturate, ma non riesco a trovare il nome della città. Inseriscila a mano.")
 
-    # DISPOSIZIONE OTTIMIZZATA PER MOBILE
-    col_loc, col_prov = st.columns([4, 1]) # Località molto più grande della Provincia
+    # DISPOSIZIONE OTTIMIZZATA
+    col_loc, col_prov = st.columns([4, 1])
     with col_loc:
         st.text_input("Località", key="localita_key")
     with col_prov:
@@ -119,23 +134,18 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
     if not df.empty:
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            # Esportiamo tutto incluso Lat/Lon per il report
             df.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
-        st.download_button("📊 SCARICA EXCEL (CON GPS)", output.getvalue(), "report_crm.xlsx", use_container_width=True)
+        st.download_button("📊 SCARICA EXCEL", output.getvalue(), "report_crm.xlsx", use_container_width=True)
 
         for _, row in df.iterrows():
             icon = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
-            titolo_box = f"{icon} {row['agente']} | {row['data']} - {row['cliente']}"
-            with st.expander(titolo_box):
+            with st.expander(f"{icon} {row['agente']} | {row['data']} - {row['cliente']}"):
                 st.write(f"**📍 Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**📝 Note:** {row['note']}")
-                if row['latitudine'] != "":
-                    # Link diretto a Google Maps
-                    link_mappa = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
-                    st.markdown(f"[📍 Apri posizione su Google Maps]({link_mappa})")
-                
-                if st.button("🗑️ Elimina visita", key=f"del_{row['id']}"):
+                if row['latitudine']:
+                    map_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
+                    st.markdown(f"[📍 Apri su Google Maps]({map_url})")
+                if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
                     conn = sqlite3.connect('crm_mobile.db'); c = conn.cursor()
                     c.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                     conn.commit(); conn.close(); st.rerun()
-    else: st.info("Nessuna visita trovata.")
