@@ -38,8 +38,7 @@ def salva_visita(cliente, data_visita, nota, data_fup, data_ordine, agente):
 
 def carica_visite(filtro_testo="", data_inizio=None, data_fine=None, filtro_agente="Tutti"):
     conn = sqlite3.connect('crm_mobile.db')
-    # Carichiamo tutto in un DataFrame Pandas per facilitare l'esportazione
-    query = "SELECT cliente, data as 'Data Visita', note as 'Note', agente as 'Agente', data_ordine FROM visite WHERE 1=1"
+    query = "SELECT cliente, data as 'Data Visita', note as 'Note', agente as 'Agente', data_ordine, id FROM visite WHERE 1=1"
     df = pd.read_sql_query(query, conn)
     conn.close()
     
@@ -103,33 +102,47 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
 
 st.divider()
 
-# Archivio e Export
+# Archivio e Filtri
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
-with f1: t_ricerca = st.text_input("Cerca...")
+with f1: t_ricerca = st.text_input("Cerca cliente o nota...")
 with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=30), datetime.now()])
-with f3: f_agente = st.selectbox("Agente", ["Tutti"] + LISTA_AGENTI)
+with f3: f_agente = st.selectbox("Filtra Agente", ["Tutti"] + LISTA_AGENTI)
 
 d_ini, d_fin = (periodo[0], periodo[1]) if isinstance(periodo, list) and len(periodo) == 2 else (None, None)
 df_visite = carica_visite(t_ricerca, d_ini, d_fin, f_agente)
 
-# TASTO EXCEL
-if not df_visite.empty:
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_visite.drop(columns=['data_ordine']).to_excel(writer, index=False, sheet_name='Visite')
-    
-    st.download_button(
-        label="📊 SCARICA REPORT EXCEL",
-        data=output.getvalue(),
-        file_name=f"report_visite_{datetime.now().strftime('%Y%m%d')}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
-    )
+# LOGICA MOSTRA/NASCONDI: Mostra solo se l'utente ha interagito con i filtri
+if t_ricerca.strip() != "" or f_agente != "Tutti":
+    if not df_visite.empty:
+        # Tasto Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_visite.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
+        
+        st.download_button(
+            label="📊 SCARICA QUESTI RISULTATI (EXCEL)",
+            data=output.getvalue(),
+            file_name=f"export_crm_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
 
-    for _, row in df_visite.iterrows():
-        with st.expander(f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']}"):
-            st.write(f"**Note:** {row['Note']}")
+        st.caption(f"Trovate {len(df_visite)} visite:")
+        for _, row in df_visite.iterrows():
+            with st.expander(f"👤 {row['Agente']} | {row['Data Visita']} - {row['cliente']}"):
+                st.write(f"**Note:** {row['Note']}")
+                if st.button(f"🗑️ Elimina", key=f"del_{row['id']}"):
+                    conn = sqlite3.connect('crm_mobile.db')
+                    c = conn.cursor()
+                    c.execute("DELETE FROM visite WHERE id = ?", (int(row['id']),))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+    else:
+        st.info("Nessuna visita corrispondente alla ricerca.")
+else:
+    st.info("👆 Usa la barra di ricerca o seleziona un agente per visualizzare lo storico.")
 
 # Footer Logo
 st.write("")
