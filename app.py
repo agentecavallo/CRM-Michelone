@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import requests
 import time
+import os
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
@@ -21,6 +22,8 @@ def inizializza_db():
                       tipo_cliente TEXT, data TEXT, note TEXT,
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                       latitudine TEXT, longitudine TEXT)''')
+        # Tabella per tracciare l'ultimo backup
+        c.execute('CREATE TABLE IF NOT EXISTS log_backup (id INTEGER, ultima_data TEXT)')
         conn.commit()
 
 inizializza_db()
@@ -84,43 +87,48 @@ def salva_visita():
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
-# Rilevamento GPS continuo (ma silenzioso)
+# Rilevamento GPS
 loc = get_geolocation()
+
+# LOGICA BACKUP 7 GIORNI (Avviso)
+with sqlite3.connect(DB_NAME) as conn:
+    res = conn.execute("SELECT ultima_data FROM log_backup WHERE id=1").fetchone()
+    if res:
+        ultima = datetime.strptime(res[0], "%Y-%m-%d")
+        if (datetime.now() - ultima).days >= 7:
+            st.warning("⚠️ Sono passati più di 7 giorni dall'ultimo Backup manuale. Vai in fondo alla pagina!")
 
 with st.expander("➕ NUOVA VISITA", expanded=True): 
     st.radio("Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key")
     st.text_input("Cliente", key="cliente_key")
     
     col_l, col_p = st.columns([3, 1]) 
-    # Usiamo direttamente le chiavi per permettere al GPS di scriverci dentro
-    localita_input = col_l.text_input("Località", key="localita_key")
-    provincia_input = col_p.text_input("Prov.", key="prov_key", max_chars=2)
+    st.text_input("Località", key="localita_key")
+    st.text_input("Prov.", key="prov_key", max_chars=2)
 
     if st.button("📍 ATTIVA GPS / AGGIORNA CITTÀ", use_container_width=True):
         if loc and 'coords' in loc:
-            lat = loc['coords']['latitude']
-            lon = loc['coords']['longitude']
-            st.session_state.lat_val = lat
-            st.session_state.lon_val = lon
+            lat, lon = loc['coords']['latitude'], loc['coords']['longitude']
+            st.session_state.lat_val, st.session_state.lon_val = lat, lon
             
             try:
-                # Chiamata API per ottenere indirizzo
+                # Modificato User-Agent per evitare blocchi
+                headers = {'User-Agent': 'CRM_Michelone_v2'}
                 url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-                res = requests.get(url, headers={'User-Agent': 'CRM_App'}).json()
-                address = res.get('address', {})
-                citta = address.get('city', address.get('town', address.get('village', '')))
-                prov = address.get('county', '')[:2].upper()
+                res = requests.get(url, headers=headers, timeout=5).json()
+                addr = res.get('address', {})
+                citta = addr.get('city', addr.get('town', addr.get('village', addr.get('suburb', ''))))
+                prov = addr.get('county', '')[:2].upper()
                 
-                # AGGIORNAMENTO DIRETTO DELLO STATO
-                st.session_state.localita_key = citta.upper() if citta else ""
-                st.session_state.prov_key = prov if prov else ""
-                st.toast(f"📍 Posizione: {citta}", icon="🌍")
+                if citta: st.session_state.localita_key = citta.upper()
+                if prov: st.session_state.prov_key = prov
+                st.success(f"📍 Città trovata: {citta}")
                 time.sleep(0.5)
-                st.rerun() # Forza Streamlit a mostrare i nuovi dati nei box
-            except Exception as e:
-                st.error("Errore nel recupero nome città, ma coordinate salvate.")
+                st.rerun()
+            except:
+                st.error("⚠️ Errore di rete: non riesco a leggere il nome della città, ma le coordinate GPS sono state acquisite. Inseriscila a mano.")
         else:
-            st.warning("⚠️ GPS non ancora pronto. Attendi un istante e riprova. Assicurati che il GPS sia attivo sul telefono.")
+            st.info("🔄 Sto cercando il segnale GPS... riprova tra 2 secondi.")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -171,7 +179,7 @@ st.divider()
 
 # --- 5. BACKUP & RIPRISTINO ---
 with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
-    st.write("### 📥 Esporta Dati")
+    st.write("### 📥 Esporta e Metti al sicuro")
     with sqlite3.connect(DB_NAME) as conn:
         df_back = pd.read_sql_query("SELECT * FROM visite", conn)
     
@@ -179,19 +187,22 @@ with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_back.to_excel(writer, index=False)
-        st.download_button("📥 SCARICA EXCEL", output.getvalue(), "crm_backup.xlsx", use_container_width=True)
+        
+        # Al click del download, aggiorniamo la data dell'ultimo backup
+        if st.download_button("📥 SCARICA EXCEL", output.getvalue(), "crm_backup.xlsx", use_container_width=True):
+            with sqlite3.connect(DB_NAME) as conn:
+                conn.execute("INSERT OR REPLACE INTO log_backup (id, ultima_data) VALUES (1, ?)", (datetime.now().strftime("%Y-%m-%d"),))
+
         with open(DB_NAME, "rb") as f:
-            st.download_button("💾 SCARICA FILE .DB", f, "crm_mobile.db", use_container_width=True)
+            st.download_button("💾 SCARICA FILE .DB (Sicurezza Totale)", f, "crm_mobile.db", use_container_width=True)
 
     st.write("---")
-    st.write("### 📤 Ripristino Database")
-    uploaded_file = st.file_uploader("Scegli un file crm_mobile.db", type="db")
-    if uploaded_file is not None:
-        if st.button("🔄 RIPRISTINA ORA", type="primary"):
-            with open(DB_NAME, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success("Database ripristinato!")
-            time.sleep(1)
-            st.rerun()
+    st.write("### 📤 Ripristino")
+    uploaded_file = st.file_uploader("Carica file .db", type="db")
+    if uploaded_file and st.button("🔄 RIPRISTINA ORA", type="primary"):
+        with open(DB_NAME, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success("Dati ripristinati!")
+        st.rerun()
 
 st.markdown("<br><center>✅ MICHELONE APPROVED</center>", unsafe_allow_html=True)
