@@ -33,7 +33,6 @@ inizializza_db()
 
 # --- FUNZIONE JAVASCRIPT PER COPIARE ---
 def copia_negli_appunti(testo, id_bottone):
-    # Crea un piccolo bottone HTML/JS invisibile che esegue la copia
     html_code = f"""
     <button id="btn_{id_bottone}" style="
         background-color: #f0f2f6; 
@@ -286,13 +285,11 @@ if st.session_state.ricerca_attiva:
                 else:
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    # --- NOTE CON TASTO COPIA ---
                     st.write("**Note:**")
                     col_note, col_copia = st.columns([2, 1])
                     with col_note:
                         st.info(row['note'])
                     with col_copia:
-                        # Chiamiamo la funzione JavaScript per copiare le note
                         copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
                     
                     if row['data_followup']:
@@ -357,3 +354,19 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                     st.error("❌ Il file non sembra un backup valido del CRM.")
             except Exception as e:
                 st.error(f"Errore: {e}")
+
+# --- LOGO FINALE 'MICHELONE APPROVED' ---
+st.write("") 
+st.divider() 
+
+# Creiamo tre colonne per centrare bene l'immagine
+col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
+
+with col_f2:
+    try:
+        # Carichiamo il logo.jpg (Assicurati che sia nella stessa cartella del file .py)
+        st.image("logo.jpg", use_container_width=True)
+        st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+    except Exception:
+        # Messaggio se l'immagine manca
+        st.info("✅ Michelone Approved")
