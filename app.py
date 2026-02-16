@@ -30,7 +30,8 @@ inizializza_db()
 # Inizializzazione chiavi di stato
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
-if 'delete_mode_id' not in st.session_state: st.session_state.delete_mode_id = None
+if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
+if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
@@ -72,11 +73,14 @@ def salva_visita():
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
                       (s.cliente_key, s.localita_key.upper(), s.prov_key.upper(), s.tipo_cliente_key, 
-                       data_visita_fmt, s.note_key, data_fup, data_ord, s.agente_key, s.get('lat_val',''), s.get('lon_val','')))
+                       data_visita_fmt, s.note_key, data_fup, data_ord, s.agente_key, str(s.lat_val), str(s.lon_val)))
             conn.commit()
         
+        # Reset campi
         st.session_state.cliente_key = ""
         st.session_state.note_key = ""
+        st.session_state.localita_key = ""
+        st.session_state.prov_key = ""
         st.toast("✅ Salvato!", icon="💾")
         time.sleep(0.5)
         st.rerun()
@@ -84,7 +88,6 @@ def salva_visita():
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
-# REGISTRAZIONE
 with st.expander("➕ NUOVA VISITA", expanded=True): 
     st.radio("Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key")
     st.text_input("Cliente", key="cliente_key")
@@ -93,11 +96,30 @@ with st.expander("➕ NUOVA VISITA", expanded=True):
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    if st.button("📍 POSIZIONE GPS", use_container_width=True):
-        loc = get_geolocation()
-        if loc:
-            st.toast("GPS Acquisito!")
-            # Qui andrebbe la logica Nominatim se desiderata
+    # --- LOGICA GPS CORRETTA ---
+    loc = get_geolocation() # Richiama il sensore GPS
+    if st.button("📍 AGGIORNA POSIZIONE GPS", use_container_width=True):
+        if loc and 'coords' in loc:
+            lat = loc['coords']['latitude']
+            lon = loc['coords']['longitude']
+            st.session_state.lat_val = lat
+            st.session_state.lon_val = lon
+            
+            # Tentativo di recuperare città e provincia via API (Gratuita)
+            try:
+                url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
+                res = requests.get(url, headers={'User-Agent': 'CRM_Michelone_App'}).json()
+                indirizzo = res.get('address', {})
+                citta = indirizzo.get('city', indirizzo.get('town', indirizzo.get('village', '')))
+                prov = indirizzo.get('county', '')[:2].upper()
+                
+                if citta: st.session_state.localita_key = citta.upper()
+                if prov: st.session_state.prov_key = prov
+                st.toast(f"📍 Posizione trovata: {citta}", icon="📍")
+            except:
+                st.toast("📍 Coordinate acquisite (Nome città non disponibile)", icon="⚠️")
+        else:
+            st.error("Assicurati di aver dato i permessi GPS al browser.")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -146,32 +168,23 @@ if st.session_state.ricerca_attiva:
 
 st.divider()
 
-# --- 5. BACKUP & RIPRISTINO (Sostituisce Zona Pericolosa) ---
+# --- 5. BACKUP & RIPRISTINO ---
 with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
     st.write("### 📥 Esporta Dati")
-    
-    # Backup Excel (per lettura)
     with sqlite3.connect(DB_NAME) as conn:
         df_back = pd.read_sql_query("SELECT * FROM visite", conn)
     
     if not df_back.empty:
-        # Verifica se l'ultimo backup è vecchio (Logica 7 giorni)
-        st.info("💡 Consiglio: Scarica il backup Excel ogni settimana per sicurezza.")
-        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_back.to_excel(writer, index=False)
         st.download_button("📥 SCARICA EXCEL (Download)", output.getvalue(), "crm_backup.xlsx", use_container_width=True)
-
-        # Backup Database Reale (per ripristino)
         with open(DB_NAME, "rb") as f:
             st.download_button("💾 SCARICA FILE .DB (Per Ripristino)", f, "crm_mobile.db", use_container_width=True)
 
     st.write("---")
     st.write("### 📤 Ripristino Database")
-    st.warning("Caricando un file .db sostituirai tutti i dati attuali!")
     uploaded_file = st.file_uploader("Scegli un file crm_mobile.db", type="db")
-    
     if uploaded_file is not None:
         if st.button("🔄 RIPRISTINA ORA", type="primary"):
             with open(DB_NAME, "wb") as f:
@@ -180,5 +193,4 @@ with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
             time.sleep(1)
             st.rerun()
 
-# Logo
 st.markdown("<br><center>✅ MICHELONE APPROVED</center>", unsafe_allow_html=True)
