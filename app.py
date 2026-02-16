@@ -91,10 +91,11 @@ def salva_visita():
             if giorni_da_aggiungere > 0:
                 data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
             
+            # tipo_cliente viene salvato come stringa vuota o valore fisso ora che il tasto è rimosso
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                      (cliente, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, 
+                      (cliente, s.localita_key.upper(), s.prov_key.upper(), "", 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
                        s.lat_val, s.lon_val))
             conn.commit()
@@ -118,7 +119,7 @@ st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
-    st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
+    # TASTI STATO RIMOSSI QUI
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
@@ -295,7 +296,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     
     st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
     
-    # --- NUOVA SEZIONE RIPRISTINO ---
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI**")
     file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
@@ -304,10 +304,8 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
         if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
             try:
                 df_ripristino = pd.read_excel(file_caricato)
-                # Verifica minima che il file sia quello giusto
                 if 'cliente' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
-                        # Sovrascrive la tabella 'visite'
                         df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
                     st.success("✅ Database ripristinato! Riavvio in corso...")
                     time.sleep(2)
