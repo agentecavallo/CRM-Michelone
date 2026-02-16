@@ -16,6 +16,8 @@ if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 # Inizializzazione stato ricerca
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
+# Inizializzazione stato MODIFICA (NUOVO)
+if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -217,7 +219,7 @@ if not df_scadenze.empty:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
 
-# --- RICERCA E ARCHIVIO ---
+# --- RICERCA E ARCHIVIO (CON MODIFICA) ---
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
@@ -226,6 +228,7 @@ f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "S
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
+    st.session_state.edit_mode_id = None # Resetta eventuali modifiche aperte
 
 if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -243,35 +246,71 @@ if st.session_state.ricerca_attiva:
         st.success(f"Trovate {len(df)} visite.")
         if st.button("❌ Chiudi Ricerca"):
             st.session_state.ricerca_attiva = False
+            st.session_state.edit_mode_id = None
             st.rerun()
 
         for _, row in df.iterrows():
+            # Mostra i dettagli normalmente
             with st.expander(f"{row['data']} - {row['cliente']} ({row['agente']})"):
-                st.write(f"**Località:** {row['localita']} ({row['provincia']})")
-                st.write(f"**Note:** {row['note']}")
-                if row['latitudine'] and row['longitudine']:
-                    st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                 
-                col_btn_del, col_msg_del = st.columns([1, 3])
-                key_confirm = f"confirm_del_{row['id']}"
-                
-                with col_btn_del:
-                    if st.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
-                        st.session_state[key_confirm] = True
-                        st.rerun()
-                
-                if st.session_state.get(key_confirm, False):
-                    st.warning("Sei sicuro?")
-                    c_yes, c_no = st.columns(2)
-                    if c_yes.button("SÌ", key=f"yes_{row['id']}", type="primary", use_container_width=True):
+                # --- MODALITÀ MODIFICA ---
+                if st.session_state.edit_mode_id == row['id']:
+                    st.info("✏️ Modalità Modifica Attiva")
+                    
+                    # Campi modificabili pre-compilati
+                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
+                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
+                    new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
+                    
+                    # Pulsanti Salva / Annulla
+                    c_save, c_canc = st.columns(2)
+                    if c_save.button("💾 SALVA", key=f"save_{row['id']}", type="primary"):
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                        del st.session_state[key_confirm]
+                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=? WHERE id=?""",
+                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, row['id']))
+                        st.session_state.edit_mode_id = None
+                        st.toast("Modifica salvata!")
+                        time.sleep(1)
                         st.rerun()
                     
-                    if c_no.button("NO", key=f"no_{row['id']}", use_container_width=True):
-                        del st.session_state[key_confirm]
+                    if c_canc.button("❌ ANNULLA", key=f"canc_{row['id']}"):
+                        st.session_state.edit_mode_id = None
                         st.rerun()
+                        
+                else:
+                    # --- MODALITÀ VISUALIZZAZIONE NORMALE ---
+                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
+                    st.write(f"**Note:** {row['note']}")
+                    if row['latitudine'] and row['longitudine']:
+                        st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
+                    
+                    # Riga Pulsanti: Modifica | Elimina
+                    col_btn_mod, col_btn_del = st.columns([1, 1])
+                    
+                    # Tasto MODIFICA
+                    if col_btn_mod.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
+                        st.session_state.edit_mode_id = row['id']
+                        st.rerun()
+                    
+                    # Tasto ELIMINA (con conferma)
+                    key_confirm = f"confirm_del_{row['id']}"
+                    if col_btn_del.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
+                        st.session_state[key_confirm] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(key_confirm, False):
+                        st.warning("⚠️ Sei sicuro di voler eliminare?")
+                        c_yes, c_no = st.columns(2)
+                        if c_yes.button("SÌ", key=f"yes_{row['id']}", type="primary", use_container_width=True):
+                            with sqlite3.connect('crm_mobile.db') as conn:
+                                conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
+                            del st.session_state[key_confirm]
+                            st.rerun()
+                        
+                        if c_no.button("NO", key=f"no_{row['id']}", use_container_width=True):
+                            del st.session_state[key_confirm]
+                            st.rerun()
     else:
         st.warning("Nessun risultato trovato.")
 
