@@ -22,11 +22,11 @@ def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                      cliente TEXT, localita TEXT, provincia TEXT,
-                      tipo_cliente TEXT, data TEXT, note TEXT,
-                      data_followup TEXT, data_ordine TEXT, agente TEXT,
-                      latitudine TEXT, longitudine TEXT)''')
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                       cliente TEXT, localita TEXT, provincia TEXT,
+                       tipo_cliente TEXT, data TEXT, note TEXT,
+                       data_followup TEXT, data_ordine TEXT, agente TEXT,
+                       latitudine TEXT, longitudine TEXT)''')
         conn.commit()
 
 inizializza_db()
@@ -101,6 +101,8 @@ def salva_visita():
     s = st.session_state
     cliente = s.get('cliente_key', '').strip()
     note = s.get('note_key', '').strip()
+    # Recuperiamo il tipo cliente selezionato
+    tipo_cli = s.get('tipo_cliente_key', '🤝 Cliente')
     
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
@@ -123,7 +125,7 @@ def salva_visita():
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                      (cliente, s.localita_key.upper(), s.prov_key.upper(), "", 
+                      (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo_cli, 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
                        s.lat_val, s.lon_val))
             conn.commit()
@@ -146,6 +148,10 @@ def salva_visita():
 st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
+    # SELETTORE TIPO CLIENTE (BOTTONI)
+    st.write("Tipologia:")
+    st.radio("Seleziona Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key", label_visibility="collapsed")
+    
     st.text_input("Nome Cliente", key="cliente_key")
     
     col_l, col_p = st.columns([3, 1]) 
@@ -209,8 +215,11 @@ if not df_scadenze.empty:
             msg_scadenza = "Scade OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
         except: msg_scadenza = "Scaduto"
 
+        # Recupera icona tipo cliente (se vuoto mette default)
+        icona_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
+
         with st.container(border=True):
-            st.markdown(f"**{row['cliente']}** - {row['localita']}")
+            st.markdown(f"{icona_tipo} **{row['cliente']}** - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
@@ -260,10 +269,22 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            with st.expander(f"{row['data']} - {row['cliente']} ({row['agente']})"):
+            # Recupera icona o mette default se è vecchia
+            icona_display = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
+            
+            with st.expander(f"{icona_display} {row['data']} - {row['cliente']} ({row['agente']})"):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
+                    
+                    # Modifica anche il tipo in fase di edit
+                    curr_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
+                    opts_tipo = ["🤝 Cliente", "🚀 Prospect"]
+                    idx_tipo = 0
+                    if curr_tipo in opts_tipo: idx_tipo = opts_tipo.index(curr_tipo)
+                    
+                    new_tipo = st.radio("Tipo", opts_tipo, index=idx_tipo, horizontal=True, key=f"e_tipo_{row['id']}")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
@@ -275,8 +296,8 @@ if st.session_state.ricerca_attiva:
                     cs, cc = st.columns(2)
                     if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=? WHERE id=?""",
-                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, row['id']))
+                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=?, tipo_cliente=? WHERE id=?""",
+                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_tipo, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
@@ -299,7 +320,8 @@ if st.session_state.ricerca_attiva:
                         except: pass
 
                     if row['latitudine'] and row['longitudine']:
-                        st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
+                        # Fix URL Mappe
+                        st.markdown(f"[📍 Mappa](http://maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
                     cb_m, cb_d = st.columns([1, 1])
                     if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
