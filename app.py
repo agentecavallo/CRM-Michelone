@@ -14,6 +14,8 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
+# Inizializzazione stato ricerca (FONDAMENTALE PER L'ELIMINAZIONE)
+if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -186,45 +188,42 @@ if not df_scadenze.empty:
             msg_scadenza = "Scaduto"
 
         with st.container(border=True):
-            # 1. Info Cliente (Riga intera)
             st.markdown(f"**{row['cliente']}** - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
+            st.write("") 
             
-            st.write("") # Spaziatore
-            
-            # 2. Pulsanti (Riga dedicata con 3 colonne)
             c1, c2, c3 = st.columns([1, 1, 1])
-            
             with c1:
-                # use_container_width=True forza il bottone ad allargarsi
                 if st.button("+1 ☀️", key=f"p1_{row['id']}", help="Domani", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
-            
             with c2:
                 if st.button("+7 📅", key=f"p7_{row['id']}", help="Settimana prox", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
-
             with c3:
-                # type="primary" rende il bottone più visibile (solitamente rosso/pieno)
                 if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
 
-# --- RICERCA E ARCHIVIO (CON CONFERMA ELIMINAZIONE) ---
+# --- RICERCA E ARCHIVIO (CORRETTO E FUNZIONANTE) ---
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
+# Il pulsante ora attiva solo lo stato, non esegue la logica direttamente
 if st.button("🔎 CERCA VISITE", use_container_width=True):
+    st.session_state.ricerca_attiva = True
+
+# Se lo stato è attivo, mostriamo i risultati (così rimangono visibili anche dopo un click)
+if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
@@ -235,32 +234,47 @@ if st.button("🔎 CERCA VISITE", use_container_width=True):
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
 
+    st.markdown("---")
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
+        # Pulsante per chiudere la ricerca
+        if st.button("❌ Chiudi Ricerca"):
+            st.session_state.ricerca_attiva = False
+            st.rerun()
+
         for _, row in df.iterrows():
+            # Chiave univoca per ogni expander
             with st.expander(f"{row['data']} - {row['cliente']} ({row['agente']})"):
                 st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**Note:** {row['note']}")
                 if row['latitudine'] and row['longitudine']:
-                    # Link Google Maps ottimizzato
                     st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                 
-                # --- LOGICA CONFERMA ELIMINAZIONE ---
-                if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
-                    st.session_state[f"confirm_del_{row['id']}"] = True
+                # --- LOGICA DI ELIMINAZIONE PERSISTENTE ---
+                col_btn_del, col_msg_del = st.columns([1, 3])
                 
-                if st.session_state.get(f"confirm_del_{row['id']}", False):
-                    st.warning("⚠️ Sei sicuro di voler eliminare questa visita?")
-                    col_si, col_no = st.columns(2)
-                    if col_si.button("SÌ, ELIMINA", key=f"yes_del_{row['id']}", type="primary"):
+                # Chiave univoca per lo stato di conferma di QUESTA riga
+                key_confirm = f"confirm_del_{row['id']}"
+                
+                with col_btn_del:
+                    if st.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
+                        st.session_state[key_confirm] = True
+                        st.rerun() # Ricarica per mostrare la conferma
+                
+                # Se la conferma è attiva per questa riga, mostra i tasti SI/NO
+                if st.session_state.get(key_confirm, False):
+                    st.warning("Sei sicuro?")
+                    c_yes, c_no = st.columns(2)
+                    if c_yes.button("SÌ", key=f"yes_{row['id']}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
                             conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                        del st.session_state[f"confirm_del_{row['id']}"]
+                        del st.session_state[key_confirm]
                         st.rerun()
                     
-                    if col_no.button("NO, ANNULLA", key=f"no_del_{row['id']}"):
-                        del st.session_state[f"confirm_del_{row['id']}"]
+                    if c_no.button("NO", key=f"no_{row['id']}", use_container_width=True):
+                        del st.session_state[key_confirm]
                         st.rerun()
+
     else:
         st.warning("Nessun risultato trovato.")
 
