@@ -14,7 +14,7 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
-# Inizializzazione stato ricerca (FONDAMENTALE PER L'ELIMINAZIONE)
+# Inizializzazione stato ricerca
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 
 def inizializza_db():
@@ -141,8 +141,14 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
                 r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", headers=headers).json()
                 a = r.get('address', {})
                 citta = a.get('city', a.get('town', a.get('village', '')))
+                
+                # --- FIX PROVINCIA ROMA ---
                 prov_full = a.get('county', '')
-                prov_sigla = prov_full[:2].upper() if prov_full else "??"
+                if prov_full and ("Roma" in prov_full or "Rome" in prov_full):
+                    prov_sigla = "RM"
+                else:
+                    prov_sigla = prov_full[:2].upper() if prov_full else "??"
+                
                 st.session_state['gps_temp'] = {'citta': citta.upper() if citta else "", 'prov': prov_sigla, 'lat': str(lat), 'lon': str(lon)}
             except: st.warning("Impossibile recuperare i dettagli dell'indirizzo.")
         else: st.warning("⚠️ Consenti la geolocalizzazione nel browser.")
@@ -211,18 +217,16 @@ if not df_scadenze.empty:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
 
-# --- RICERCA E ARCHIVIO (CORRETTO E FUNZIONANTE) ---
+# --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-# Il pulsante ora attiva solo lo stato, non esegue la logica direttamente
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
 
-# Se lo stato è attivo, mostriamo i risultati (così rimangono visibili anche dopo un click)
 if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
@@ -237,31 +241,25 @@ if st.session_state.ricerca_attiva:
     st.markdown("---")
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
-        # Pulsante per chiudere la ricerca
         if st.button("❌ Chiudi Ricerca"):
             st.session_state.ricerca_attiva = False
             st.rerun()
 
         for _, row in df.iterrows():
-            # Chiave univoca per ogni expander
             with st.expander(f"{row['data']} - {row['cliente']} ({row['agente']})"):
                 st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**Note:** {row['note']}")
                 if row['latitudine'] and row['longitudine']:
                     st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                 
-                # --- LOGICA DI ELIMINAZIONE PERSISTENTE ---
                 col_btn_del, col_msg_del = st.columns([1, 3])
-                
-                # Chiave univoca per lo stato di conferma di QUESTA riga
                 key_confirm = f"confirm_del_{row['id']}"
                 
                 with col_btn_del:
                     if st.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
                         st.session_state[key_confirm] = True
-                        st.rerun() # Ricarica per mostrare la conferma
+                        st.rerun()
                 
-                # Se la conferma è attiva per questa riga, mostra i tasti SI/NO
                 if st.session_state.get(key_confirm, False):
                     st.warning("Sei sicuro?")
                     c_yes, c_no = st.columns(2)
@@ -274,7 +272,6 @@ if st.session_state.ricerca_attiva:
                     if c_no.button("NO", key=f"no_{row['id']}", use_container_width=True):
                         del st.session_state[key_confirm]
                         st.rerun()
-
     else:
         st.warning("Nessun risultato trovato.")
 
