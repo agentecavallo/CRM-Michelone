@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
+import streamlit.components.v1 as components
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
@@ -29,6 +30,35 @@ def inizializza_db():
         conn.commit()
 
 inizializza_db()
+
+# --- FUNZIONE JAVASCRIPT PER COPIARE ---
+def copia_negli_appunti(testo, id_bottone):
+    # Crea un piccolo bottone HTML/JS invisibile che esegue la copia
+    html_code = f"""
+    <button id="btn_{id_bottone}" style="
+        background-color: #f0f2f6; 
+        border: 1px solid #dcdfe3; 
+        border-radius: 5px; 
+        padding: 5px 10px; 
+        cursor: pointer;
+        width: 100%;
+        font-weight: bold;
+        color: #31333F;">
+        📋 COPIA NOTE
+    </button>
+
+    <script>
+    document.getElementById("btn_{id_bottone}").onclick = function() {{
+        const text = `{testo}`;
+        navigator.clipboard.writeText(text).then(function() {{
+            alert("Note copiate negli appunti!");
+        }}, function(err) {{
+            console.error('Errore nel copia:', err);
+        }});
+    }};
+    </script>
+    """
+    components.html(html_code, height=45)
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
@@ -254,18 +284,22 @@ if st.session_state.ricerca_attiva:
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
-                    # --- MODALITÀ VISUALIZZAZIONE AGGIORNATA ---
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
-                    st.write(f"**Note:** {row['note']}")
                     
-                    # AGGIUNTA DATA RICONTATTO SE ESISTE
+                    # --- NOTE CON TASTO COPIA ---
+                    st.write("**Note:**")
+                    col_note, col_copia = st.columns([2, 1])
+                    with col_note:
+                        st.info(row['note'])
+                    with col_copia:
+                        # Chiamiamo la funzione JavaScript per copiare le note
+                        copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
+                    
                     if row['data_followup']:
                         try:
-                            # Trasformo la data da YYYY-MM-DD a DD/MM/YYYY per leggerla meglio
                             data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
-                            st.info(f"📅 **Ricontatto pianificato il:** {data_fup_it}")
-                        except:
-                            st.info(f"📅 **Ricontatto pianificato:** {row['data_followup']}")
+                            st.write(f"📅 **Ricontatto:** {data_fup_it}")
+                        except: pass
 
                     if row['latitudine'] and row['longitudine']:
                         st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
