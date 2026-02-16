@@ -217,7 +217,7 @@ if not df_scadenze.empty:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
 
-# --- RICERCA E ARCHIVIO ---
+# --- RICERCA E ARCHIVIO (CON CONFERMA ELIMINAZIONE) ---
 st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
@@ -242,13 +242,25 @@ if st.button("🔎 CERCA VISITE", use_container_width=True):
                 st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**Note:** {row['note']}")
                 if row['latitudine'] and row['longitudine']:
-                    # Link Google Maps ottimizzato per mobile
+                    # Link Google Maps ottimizzato
                     st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                 
-                if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                    st.rerun()
+                # --- LOGICA CONFERMA ELIMINAZIONE ---
+                if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
+                    st.session_state[f"confirm_del_{row['id']}"] = True
+                
+                if st.session_state.get(f"confirm_del_{row['id']}", False):
+                    st.warning("⚠️ Sei sicuro di voler eliminare questa visita?")
+                    col_si, col_no = st.columns(2)
+                    if col_si.button("SÌ, ELIMINA", key=f"yes_del_{row['id']}", type="primary"):
+                        with sqlite3.connect('crm_mobile.db') as conn:
+                            conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
+                        del st.session_state[f"confirm_del_{row['id']}"]
+                        st.rerun()
+                    
+                    if col_no.button("NO, ANNULLA", key=f"no_del_{row['id']}"):
+                        del st.session_state[f"confirm_del_{row['id']}"]
+                        st.rerun()
     else:
         st.warning("Nessun risultato trovato.")
 
