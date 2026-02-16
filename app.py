@@ -3,6 +3,7 @@ import sqlite3
 import pandas as pd
 import requests
 import os
+import time
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
@@ -27,6 +28,49 @@ inizializza_db()
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
+# --- NUOVA FUNZIONE: BACKUP AUTOMATICO SETTIMANALE ---
+def controllo_backup_automatico():
+    # Nome della cartella dove mettere i backup
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    
+    # Se la cartella non esiste, la crea
+    if not os.path.exists(cartella_backup):
+        os.makedirs(cartella_backup)
+    
+    # Controlla i file nella cartella
+    files = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
+    fare_backup = False
+    
+    if not files:
+        # Se non c'è nessun file, facciamo il primo backup
+        fare_backup = True
+    else:
+        # Troviamo il file più recente
+        percorsi_completi = [os.path.join(cartella_backup, f) for f in files]
+        file_piu_recente = max(percorsi_completi, key=os.path.getctime)
+        timestamp_ultimo = os.path.getctime(file_piu_recente)
+        data_ultimo = datetime.fromtimestamp(timestamp_ultimo)
+        
+        # Se sono passati più di 7 giorni
+        if datetime.now() - data_ultimo > timedelta(days=7):
+            fare_backup = True
+            
+    if fare_backup:
+        conn = sqlite3.connect('crm_mobile.db')
+        df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
+        conn.close()
+        
+        if not df.empty:
+            nome_file = f"Backup_Auto_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
+            percorso_completo = os.path.join(cartella_backup, nome_file)
+            
+            # Salvataggio su disco locale
+            df.to_excel(percorso_completo, index=False)
+            st.toast(f"🛡️ Backup Settimanale Eseguito: {nome_file}", icon="✅")
+
+# Eseguiamo il controllo appena parte l'app
+controllo_backup_automatico()
+
 def applica_dati_gps():
     if 'gps_temp' in st.session_state:
         dati = st.session_state['gps_temp']
@@ -45,11 +89,9 @@ def salva_visita():
         conn = sqlite3.connect('crm_mobile.db')
         c = conn.cursor()
         
-        # Date per il salvataggio
         data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
         data_ord = s.data_key.strftime("%Y-%m-%d")
         
-        # --- LOGICA FOLLOW UP INTELLIGENTE ---
         scelta = s.get('fup_opt', 'No')
         data_fup = ""
         
@@ -70,7 +112,6 @@ def salva_visita():
         conn.commit()
         conn.close()
         
-        # Reset dei campi
         s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
         s.lat_val = ""; s.lon_val = ""; s.fup_opt = "No" 
         if 'gps_temp' in s: del s['gps_temp']
@@ -80,10 +121,8 @@ def salva_visita():
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
-# Funzione per generare il file Excel completo (BACKUP)
 def genera_excel_backup():
     conn = sqlite3.connect('crm_mobile.db')
-    # Prende TUTTO senza filtri
     df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
     conn.close()
     
@@ -107,7 +146,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # GPS Logic
     loc_data = get_geolocation()
     if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -202,14 +240,14 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# --- PULSANTE BACKUP (Sempre visibile) ---
+# --- PULSANTE BACKUP MANUALE ---
 col_bk_txt, col_bk_btn = st.columns([2, 1])
 with col_bk_txt:
     st.caption("Scarica tutto il database in Excel per sicurezza.")
 with col_bk_btn:
     data_backup = genera_excel_backup()
     st.download_button(
-        label="📦 BACKUP COMPLETO",
+        label="📦 BACKUP MANUALE",
         data=data_backup,
         file_name=f"Backup_CRM_Michelone_{datetime.now().strftime('%Y%m%d')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -249,7 +287,6 @@ if st.session_state.ricerca_attiva:
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
         
-        # Download SOLO dei dati filtrati
         output_filter = BytesIO()
         with pd.ExcelWriter(output_filter, engine='xlsxwriter') as writer:
             df.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
