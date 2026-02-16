@@ -53,7 +53,7 @@ def controllo_backup_automatico():
                     df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
                     st.toast("🛡️ Backup Settimanale Eseguito!", icon="✅")
             except:
-                pass # Se la tabella non esiste ancora, ignora
+                pass 
 
 controllo_backup_automatico()
 
@@ -77,22 +77,20 @@ def salva_visita():
             data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
             data_ord = s.data_key.strftime("%Y-%m-%d")
             
-            # --- LOGICA RICONTATTO AGGIORNATA ---
+            # --- LOGICA RICONTATTO ---
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             
-            # Calcolo giorni da aggiungere
             giorni_da_aggiungere = 0
-            if scelta == "1 gg":       # <--- NUOVO
+            if scelta == "1 gg":
                 giorni_da_aggiungere = 1
             elif scelta == "7 gg":
                 giorni_da_aggiungere = 7
-            elif scelta == "15 gg":    # <--- NUOVO
+            elif scelta == "15 gg":
                 giorni_da_aggiungere = 15
             elif scelta == "30 gg":
                 giorni_da_aggiungere = 30
             
-            # Se è stato selezionato un intervallo valido, calcola la data
             if giorni_da_aggiungere > 0:
                 data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
             
@@ -111,7 +109,7 @@ def salva_visita():
         st.session_state.note_key = ""
         st.session_state.lat_val = ""
         st.session_state.lon_val = ""
-        st.session_state.fup_opt = "No" # Reset anche della scelta ricontatto
+        st.session_state.fup_opt = "No"
         
         st.toast("✅ Visita salvata!", icon="💾")
         time.sleep(1)
@@ -122,7 +120,8 @@ def salva_visita():
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
-with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True): # Ho messo expanded=True per comodità
+# --- MODIFICA QUI: expanded=False tiene chiuso il pannello ---
+with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
     
@@ -164,8 +163,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True): # Ho messo expande
     st.text_area("Note", key="note_key", height=150)
     
     st.write("📅 **Pianifica Ricontatto:**")
-    # --- WIDGET AGGIORNATO CON NUOVE OPZIONI ---
-    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed") # <--- NUOVO
+    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
@@ -174,13 +172,11 @@ st.divider()
 # --- ALERT SCADENZE ---
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi = datetime.now().strftime("%Y-%m-%d")
-    # Ordiniamo per data di scadenza crescente (i più vecchi prima)
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
 
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
-        # Calcolo giorni di ritardo per visualizzarli
         try:
             d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
@@ -214,11 +210,9 @@ if st.button("🔎 CERCA VISITE", use_container_width=True):
         df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
     if f_agente != "Tutti":
         df = df[df['agente'] == f_agente]
-    # Filtro data se selezionato range
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
 
-    
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
         for _, row in df.iterrows():
@@ -226,8 +220,8 @@ if st.button("🔎 CERCA VISITE", use_container_width=True):
                 st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**Note:** {row['note']}")
                 if row['latitudine'] and row['longitudine']:
-                    # Corretto URL Google Maps
-                    st.markdown(f"[📍 Mappa](https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']})")
+                    # Url maps corretto per mobile
+                    st.markdown(f"[📍 Mappa](http://maps.google.com/?q={row['latitudine']},{row['longitudine']})")
                 
                 if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
                     with sqlite3.connect('crm_mobile.db') as conn:
