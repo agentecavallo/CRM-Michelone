@@ -91,7 +91,6 @@ def salva_visita():
             if giorni_da_aggiungere > 0:
                 data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
             
-            # tipo_cliente viene salvato come stringa vuota o valore fisso ora che il tasto è rimosso
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
@@ -119,7 +118,6 @@ st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
-    # TASTI STATO RIMOSSI QUI
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
@@ -256,8 +254,19 @@ if st.session_state.ricerca_attiva:
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
+                    # --- MODALITÀ VISUALIZZAZIONE AGGIORNATA ---
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     st.write(f"**Note:** {row['note']}")
+                    
+                    # AGGIUNTA DATA RICONTATTO SE ESISTE
+                    if row['data_followup']:
+                        try:
+                            # Trasformo la data da YYYY-MM-DD a DD/MM/YYYY per leggerla meglio
+                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                            st.info(f"📅 **Ricontatto pianificato il:** {data_fup_it}")
+                        except:
+                            st.info(f"📅 **Ricontatto pianificato:** {row['data_followup']}")
+
                     if row['latitudine'] and row['longitudine']:
                         st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
