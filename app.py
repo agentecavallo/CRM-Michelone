@@ -70,7 +70,12 @@ def elimina_riga(id_da_eliminare):
 # --- 3. INTERFACCIA ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="wide")
 
-st.title("💼 CRM Michelone Cloud")
+# --- LOGO E TITOLO ---
+col_tit1, col_tit2 = st.columns([1, 5])
+with col_tit1:
+    st.image("https://cdn-icons-png.flaticon.com/512/2912/2912761.png", width=80)
+with col_tit2:
+    st.title("CRM Michelone Cloud")
 
 # --- SEZIONE INSERIMENTO ---
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
@@ -87,7 +92,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
     with c_loc: st.text_input("Località", key="localita_key")
     with c_prov: st.text_input("Prov.", key="prov_key", max_chars=2)
     
-    # GEOLOCALIZZAZIONE
     with c_gps:
         st.write(" ") # Spaziatore
         loc = get_geolocation()
@@ -96,7 +100,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
             lon = loc['coords']['longitude']
             st.session_state['lat_val'] = str(lat)
             st.session_state['lon_val'] = str(lon)
-            # Reverse Geocoding per trovare città
             try:
                 res = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}").json()
                 addr = res.get('address', {})
@@ -114,19 +117,18 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
 
 st.divider()
 
-# --- RICERCA E ARCHIVIO ---
+# --- SEZIONE RICERCA (SEMPRE VISIBILE) ---
+st.subheader("🔍 Ricerca nell'Archivio")
+f_col1, f_col2 = st.columns(2)
+with f_col1:
+    cerca = st.text_input("Cerca per nome o parola chiave...", placeholder="Scrivi qui per filtrare...")
+with f_col2:
+    agente_scelto = st.selectbox("Filtra per Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+
+# --- CARICAMENTO E VISUALIZZAZIONE DATI ---
 df = carica_dati()
 
 if not df.empty:
-    st.subheader("🔍 Ricerca nell'Archivio")
-    
-    # Filtri
-    f_col1, f_col2 = st.columns(2)
-    with f_col1:
-        cerca = st.text_input("Cerca per nome o parola chiave...")
-    with f_col2:
-        agente_scelto = st.selectbox("Filtra per Agente", ["Tutti"] + ["HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-
     # Applica filtri
     mask = df.astype(str).apply(lambda x: cerca.lower() in x.str.lower().any(), axis=1) if cerca else [True]*len(df)
     df_filt = df[mask]
@@ -135,21 +137,22 @@ if not df.empty:
 
     # Alert Scadenze
     oggi = datetime.now().strftime("%Y-%m-%d")
-    df_scaduti = df[df['FollowUp'] != ""]
-    df_scaduti = df_scaduti[df_scaduti['FollowUp'] <= oggi]
-    
-    if not df_scaduti.empty:
-        st.error(f"⚠️ Hai {len(df_scaduti)} ricontatti scaduti o per oggi!")
+    if 'FollowUp' in df.columns:
+        df_scaduti = df[(df['FollowUp'] != "") & (df['FollowUp'] <= oggi)]
+        if not df_scaduti.empty:
+            st.error(f"⚠️ Hai {len(df_scaduti)} ricontatti scaduti o per oggi!")
 
     # Visualizzazione Schede
-    for i, row in df_filt.iloc[::-1].iterrows():
-        with st.expander(f"{row['Data']} - {row['Cliente']} ({row['Località']}) - {row['Agente']}"):
-            st.write(f"**Tipo:** {row['Tipo']}")
-            st.write(f"**Note:** {row['Note']}")
-            if row['FollowUp']: st.warning(f"📅 Ricontatto fissato per: {row['FollowUp']}")
-            
-            if st.button("🗑️ Elimina Visita", key=f"del_{row['ID']}"):
-                elimina_riga(row['ID'])
-                st.toast("Eliminato...")
+    if not df_filt.empty:
+        for i, row in df_filt.iloc[::-1].iterrows():
+            with st.expander(f"{row['Data']} - {row['Cliente']} ({row['Località']}) - {row['Agente']}"):
+                st.write(f"**Tipo:** {row['Tipo']}")
+                st.write(f"**Note:** {row['Note']}")
+                if row.get('FollowUp'): st.warning(f"📅 Ricontatto fissato per: {row['FollowUp']}")
+                
+                if st.button("🗑️ Elimina Visita", key=f"del_{row['ID']}"):
+                    elimina_riga(row['ID'])
+    else:
+        st.info("Nessuna visita corrisponde alla ricerca.")
 else:
-    st.info("Nessuna visita registrata nel foglio Google.")
+    st.info("Il foglio Google è vuoto. Registra la prima visita sopra!")
