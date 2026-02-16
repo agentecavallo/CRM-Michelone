@@ -234,4 +234,94 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
     else:
         st.info("Nessuna visita trovata.")
 else:
+
     st.caption("Usa i filtri per cercare.")
+
+import tkinter as tk
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+
+class CRMApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Michelone CRM - Gestione Clienti")
+        self.root.geometry("1000x700")
+        self.root.configure(bg="#f0f0f0")
+
+        # --- CONFIGURAZIONE LAYOUT ---
+        # Barra laterale (Sidebar)
+        self.sidebar = tk.Frame(self.root, bg="#2c3e50", width=250)
+        self.sidebar.pack(side="left", fill="y")
+        self.sidebar.pack_propagate(False)
+
+        # Area Principale
+        self.main_content = tk.Frame(self.root, bg="white")
+        self.main_content.pack(side="right", expand=True, fill="both")
+
+        # --- INSERIMENTO LOGO ---
+        self.carica_logo()
+
+        # --- ELEMENTI SIDEBAR ---
+        self.crea_menu_sidebar()
+
+        # --- BENVENUTO ---
+        self.mostra_dashboard()
+
+    def carica_logo(self):
+        try:
+            # Apriamo il file caricato
+            img_originale = Image.open("logo.jpg")
+            
+            # Ridimensioniamo il logo per adattarlo alla sidebar (es. 180x180 pixel)
+            img_resized = img_originale.resize((180, 180), Image.Resampling.LANCZOS)
+            
+            # Convertiamo per Tkinter
+            self.logo_image = ImageTk.PhotoImage(img_resized)
+            
+            # Label per mostrare il logo
+            self.label_logo = tk.Label(self.sidebar, image=self.logo_image, bg="#2c3e50")
+            self.label_logo.pack(pady=20)
+            
+        except Exception as e:
+            print(f"Errore caricamento logo: {e}")
+            tk.Label(self.sidebar, text="Logo non trovato", fg="white", bg="#2c3e50").pack(pady=20)
+
+    def crea_menu_sidebar(self):
+        # Stile bottoni
+        style = ttk.Style()
+        style.configure("Menu.TButton", font=("Arial", 12), padding=10)
+
+        pulsanti = ["Dashboard", "Anagrafica Clienti", "Fatturazione", "Impostazioni"]
+        for testo in pulsanti:
+            btn = tk.Button(self.sidebar, text=testo, bg="#34495e", fg="white", 
+                            font=("Arial", 11, "bold"), bd=0, cursor="hand2",
+                            activebackground="#1abc9c", activeforeground="white")
+            btn.pack(fill="x", padx=10, pady=5)
+
+    def mostra_dashboard(self):
+        # Titolo nell'area principale
+        lbl_titolo = tk.Label(self.main_content, text="Benvenuto nel tuo CRM", 
+                              font=("Arial", 24, "bold"), bg="white", fg="#2c3e50")
+        lbl_titolo.pack(pady=40)
+        
+        lbl_info = tk.Label(self.main_content, text="Il sistema è sincronizzato e 'Michelone Approved'!", 
+                            font=("Arial", 14), bg="white", fg="#7f8c8d")
+        lbl_info.pack(pady=10)
+
+        # Esempio di tabella dati
+        columns = ("id", "nome", "stato")
+        tree = ttk.Treeview(self.main_content, columns=columns, show="headings")
+        tree.heading("id", text="ID")
+        tree.heading("nome", text="Nome Cliente")
+        tree.heading("stato", text="Stato Pagamento")
+        
+        # Dati di esempio
+        tree.insert("", "end", values=("001", "Mario Rossi", "Pagato"))
+        tree.insert("", "end", values=("002", "Luigi Bianchi", "In attesa"))
+        
+        tree.pack(pady=20, padx=20, fill="x")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = CRMApp(root)
+    root.mainloop()
