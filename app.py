@@ -130,6 +130,7 @@ def salva_visita():
                        s.lat_val, s.lon_val))
             conn.commit()
         
+        # Reset dei campi
         st.session_state.cliente_key = ""
         st.session_state.localita_key = ""
         st.session_state.prov_key = ""
@@ -137,6 +138,11 @@ def salva_visita():
         st.session_state.lat_val = ""
         st.session_state.lon_val = ""
         st.session_state.fup_opt = "No"
+        
+        # RESET STATI RICERCA (Risolve il problema del refresh ID)
+        st.session_state.ricerca_attiva = False
+        st.session_state.edit_mode_id = None
+        st.session_state.delete_mode_id = None
         
         st.toast("✅ Visita salvata!", icon="💾")
         time.sleep(0.5)
@@ -207,6 +213,7 @@ with sqlite3.connect('crm_mobile.db') as conn:
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for idx, row in df_scadenze.iterrows():
+        unique_alert_key = f"alert_{row['id']}" # Usiamo ID reale
         try:
             d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
@@ -221,19 +228,19 @@ if not df_scadenze.empty:
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
-                if st.button("+1 ☀️", key=f"p1_al_{idx}_{row['id']}", use_container_width=True):
+                if st.button("+1 ☀️", key=f"p1_{unique_alert_key}", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
             with c2:
-                if st.button("+7 📅", key=f"p7_al_{idx}_{row['id']}", use_container_width=True):
+                if st.button("+7 📅", key=f"p7_{unique_alert_key}", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
             with c3:
-                if st.button("✅ Fatto", key=f"ok_al_{idx}_{row['id']}", type="primary", use_container_width=True):
+                if st.button("✅ Fatto", key=f"ok_{unique_alert_key}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
@@ -268,13 +275,13 @@ if st.session_state.ricerca_attiva:
 
         for idx, row in df.iterrows():
             icona_display = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
-            # Chiave univoca per identificare questa specifica riga
-            unique_key = f"{idx}_{row['id']}"
+            # MODIFICA: Usiamo solo l'ID del database per la chiave univoca
+            real_id = str(row['id'])
             
             with st.expander(f"{icona_display} {row['data']} - {row['cliente']} ({row['agente']})"):
                 
                 # SEZIONE MODIFICA
-                if st.session_state.edit_mode_id == unique_key:
+                if st.session_state.edit_mode_id == real_id:
                     st.info("✏️ Modifica Dati")
                     
                     col_d1, col_d2 = st.columns(2)
@@ -282,16 +289,16 @@ if st.session_state.ricerca_attiva:
                     except: data_visita_obj = datetime.now().date()
                     
                     with col_d1:
-                        new_data_visita = st.date_input("Data Visita", data_visita_obj, key=f"e_dv_{unique_key}")
+                        new_data_visita = st.date_input("Data Visita", data_visita_obj, key=f"e_dv_{real_id}")
 
                     has_fup = True if row['data_followup'] else False
                     with col_d2:
-                        enable_fup = st.checkbox("Pianifica Ricontatto", value=has_fup, key=f"chk_{unique_key}")
+                        enable_fup = st.checkbox("Pianifica Ricontatto", value=has_fup, key=f"chk_{real_id}")
                         new_data_fup_val = None
                         if enable_fup:
                             try: default_fup = datetime.strptime(row['data_followup'], "%Y-%m-%d").date()
                             except: default_fup = datetime.now().date() + timedelta(days=1)
-                            new_data_fup_val = st.date_input("Data Ricontatto", default_fup, key=f"e_df_{unique_key}")
+                            new_data_fup_val = st.date_input("Data Ricontatto", default_fup, key=f"e_df_{real_id}")
                     
                     st.markdown("---")
                     curr_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
@@ -299,19 +306,19 @@ if st.session_state.ricerca_attiva:
                     try: idx_tipo = opts_tipo.index(curr_tipo)
                     except: idx_tipo = 0
                     
-                    new_tipo = st.radio("Tipo", opts_tipo, index=idx_tipo, horizontal=True, key=f"e_t_{unique_key}")
-                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_c_{unique_key}")
+                    new_tipo = st.radio("Tipo", opts_tipo, index=idx_tipo, horizontal=True, key=f"e_t_{real_id}")
+                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_c_{real_id}")
                     
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
-                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_a_{unique_key}")
-                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_l_{unique_key}")
-                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_p_{unique_key}")
-                    new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_n_{unique_key}")
+                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_a_{real_id}")
+                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_l_{real_id}")
+                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_p_{real_id}")
+                    new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_n_{real_id}")
                     
                     cs, cc = st.columns(2)
-                    if cs.button("💾 SALVA", key=f"sv_{unique_key}", type="primary", use_container_width=True):
+                    if cs.button("💾 SALVA", key=f"sv_{real_id}", type="primary", use_container_width=True):
                         save_fmt = new_data_visita.strftime("%d/%m/%Y")
                         save_ord = new_data_visita.strftime("%Y-%m-%d")
                         save_fup = new_data_fup_val.strftime("%Y-%m-%d") if enable_fup and new_data_fup_val else ""
@@ -320,7 +327,7 @@ if st.session_state.ricerca_attiva:
                                          (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_tipo, save_fmt, save_ord, save_fup, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
-                    if cc.button("❌ ANNULLA", key=f"can_{unique_key}", use_container_width=True):
+                    if cc.button("❌ ANNULLA", key=f"can_{real_id}", use_container_width=True):
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 
@@ -330,7 +337,7 @@ if st.session_state.ricerca_attiva:
                     st.write("**Note:**")
                     col_note, col_copia = st.columns([2, 1])
                     with col_note: st.info(row['note'])
-                    with col_copia: copia_negli_appunti(row['note'].replace("`", "'"), f"cp_{unique_key}")
+                    with col_copia: copia_negli_appunti(row['note'].replace("`", "'"), f"cp_{real_id}")
                     
                     if row['data_followup']:
                         try:
@@ -339,33 +346,33 @@ if st.session_state.ricerca_attiva:
                         except: pass
 
                     if row['latitudine'] and row['longitudine']:
-                        st.markdown(f"[📍 Mappa](http://maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
+                        st.markdown(f"[📍 Mappa](https://www.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
                     st.divider()
                     cb_m, cb_d = st.columns([1, 1])
                     
                     # Tasto MODIFICA
-                    if cb_m.button("✏️ Modifica", key=f"btn_m_{unique_key}", use_container_width=True):
-                        st.session_state.edit_mode_id = unique_key
+                    if cb_m.button("✏️ Modifica", key=f"btn_m_{real_id}", use_container_width=True):
+                        st.session_state.edit_mode_id = real_id
                         st.session_state.delete_mode_id = None
                         st.rerun()
                     
                     # Tasto ELIMINA
-                    if cb_d.button("🗑️ Elimina", key=f"btn_d_{unique_key}", use_container_width=True):
-                        st.session_state.delete_mode_id = unique_key
+                    if cb_d.button("🗑️ Elimina", key=f"btn_d_{real_id}", use_container_width=True):
+                        st.session_state.delete_mode_id = real_id
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     
                     # CONFERMA ELIMINAZIONE
-                    if st.session_state.delete_mode_id == unique_key:
+                    if st.session_state.delete_mode_id == real_id:
                         st.warning("⚠️ Confermi l'eliminazione definitiva?")
                         cy, cn = st.columns(2)
-                        if cy.button("SÌ, ELIMINA", key=f"y_{unique_key}", type="primary", use_container_width=True):
+                        if cy.button("SÌ, ELIMINA", key=f"y_{real_id}", type="primary", use_container_width=True):
                             with sqlite3.connect('crm_mobile.db') as conn:
                                 conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                             st.session_state.delete_mode_id = None
                             st.rerun()
-                        if cn.button("NO, ANNULLA", key=f"n_{unique_key}", use_container_width=True):
+                        if cn.button("NO, ANNULLA", key=f"n_{real_id}", use_container_width=True):
                             st.session_state.delete_mode_id = None
                             st.rerun()
     else:
