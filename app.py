@@ -14,16 +14,20 @@ def connetti_google_sheet():
     scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
     
     try:
-        # Legge il testo che hai incollato nei "Secrets" di Streamlit
-        creds_info = json.loads(st.secrets["service_account"])
+        # Recupera la stringa dai Secrets e puliscila da eventuali spazi bianchi
+        secret_raw = st.secrets["service_account"].strip()
+        creds_info = json.loads(secret_raw)
+        
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info, scope)
         client = gspread.authorize(creds)
         
-        # Prova ad aprire il foglio CRM_Dati
+        # Prova ad aprire il foglio
         sheet = client.open("CRM_Dati").sheet1 
         return sheet
     except Exception as e:
-        st.error(f"❌ Errore di connessione: {e}")
+        # Se non c'è un vero errore, non mostrare nulla
+        if "Response [200]" not in str(e):
+            st.error(f"❌ Errore di connessione: {e}")
         return None
 
 # --- RESTO DEL CODICE PER IL FUNZIONAMENTO ---
@@ -81,3 +85,4 @@ if not df.empty:
     st.dataframe(df)
 else:
     st.info("In attesa di dati dal foglio Google...")
+
