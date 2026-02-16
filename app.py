@@ -16,6 +16,7 @@ if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
+if 'confirm_reset' not in st.session_state: st.session_state.confirm_reset = False
 
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -283,36 +284,97 @@ if st.session_state.ricerca_attiva:
     else:
         st.warning("Nessun risultato trovato.")
 
-# --- GESTIONE DATI ---
+# --- 4. GESTIONE DATI (BACKUP, RIPRISTINO E MANUTENZIONE) ---
 st.divider()
-with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
-    with sqlite3.connect('crm_mobile.db') as conn:
-        df_full = pd.read_sql_query("SELECT * FROM visite", conn)
-    
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_full.to_excel(writer, index=False)
-    
-    st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
-    
-    # --- NUOVA SEZIONE RIPRISTINO ---
-    st.markdown("---")
-    st.write("📤 **RIPRISTINO DATI**")
-    file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
-    
-    if file_caricato is not None:
-        if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
-            try:
-                df_ripristino = pd.read_excel(file_caricato)
-                # Verifica minima che il file sia quello giusto
-                if 'cliente' in df_ripristino.columns:
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        # Sovrascrive la tabella 'visite'
-                        df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
-                    st.success("✅ Database ripristinato! Riavvio in corso...")
+with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
+    col_back, col_ripr = st.columns(2)
+
+    with col_back:
+        st.write("📤 **Backup**")
+        # 1. Backup Excel
+        with sqlite3.connect('crm_mobile.db') as conn:
+            df_full = pd.read_sql_query("SELECT * FROM visite", conn)
+        
+        output_excel = BytesIO()
+        with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
+            df_full.to_excel(writer, index=False)
+        
+        st.download_button(
+            label="📥 Scarica Excel",
+            data=output_excel.getvalue(),
+            file_name=f"CRM_Backup_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
+
+        # 2. Backup del file Database reale (.db)
+        try:
+            with open("crm_mobile.db", "rb") as f:
+                st.download_button(
+                    label="💾 Scarica File .DB",
+                    data=f,
+                    file_name="crm_mobile.db",
+                    mime="application/x-sqlite3",
+                    use_container_width=True,
+                    help="Consigliato per un ripristino perfetto."
+                )
+        except:
+            st.error("File database non trovato.")
+
+    with col_ripr:
+        st.write("📥 **Ripristino**")
+        file_caricato = st.file_uploader("Carica file .db o .xlsx", type=["db", "xlsx"])
+        
+        if file_caricato is not None:
+            if st.button("⚠️ AVVIA RIPRISTINO", type="primary", use_container_width=True):
+                try:
+                    if file_caricato.name.endswith('.db'):
+                        with open("crm_mobile.db", "wb") as f:
+                            f.write(file_caricato.getbuffer())
+                        st.success("✅ Database .db ripristinato!")
+                    else:
+                        df_ripristino = pd.read_excel(file_caricato)
+                        if 'cliente' in df_ripristino.columns:
+                            with sqlite3.connect('crm_mobile.db') as conn:
+                                df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
+                            st.success("✅ Dati importati da Excel!")
+                        else:
+                            st.error("❌ Il file non sembra un backup valido.")
+                    
                     time.sleep(2)
                     st.rerun()
-                else:
-                    st.error("❌ Il file non sembra un backup valido del CRM.")
-            except Exception as e:
-                st.error(f"Errore: {e}")
+                except Exception as e:
+                    st.error(f"Errore durante il ripristino: {e}")
+
+    # --- MANUTENZIONE STRAORDINARIA ---
+    st.markdown("---")
+    st.write("⚙️ **Manutenzione Straordinaria**")
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button("🧹 Ottimizza Database", use_container_width=True, help="Compatta il database e libera spazio"):
+            with sqlite3.connect('crm_mobile.db') as conn:
+                conn.execute("VACUUM")
+            st.toast("Database ottimizzato!", icon="✨")
+
+    with c2:
+        if not st.session_state.confirm_reset:
+            if st.button("🗑️ RESET TOTALE", use_container_width=True):
+                st.session_state.confirm_reset = True
+                st.rerun()
+        else:
+            st.warning("Sei SICURO? Perderai tutto!")
+            cr1, cr2 = st.columns(2)
+            if cr1.button("SÌ, CANCELLA", type="primary", use_container_width=True):
+                with sqlite3.connect('crm_mobile.db') as conn:
+                    conn.execute("DELETE FROM visite")
+                    conn.commit()
+                st.session_state.confirm_reset = False
+                st.success("Database svuotato.")
+                time.sleep(2)
+                st.rerun()
+            if cr2.button("ANNULLA", use_container_width=True):
+                st.session_state.confirm_reset = False
+                st.rerun()
+
+    st.caption("Il sistema esegue backup automatici ogni 7 giorni nella cartella locale.")
