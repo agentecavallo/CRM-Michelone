@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
 
-# --- 1. FUNZIONI DI SUPPORTO ---
+# --- 1. CONFIGURAZIONE E DATABASE ---
+st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
+
 def inizializza_db():
     conn = sqlite3.connect('crm_mobile.db')
     c = conn.cursor()
@@ -18,6 +20,11 @@ def inizializza_db():
                   latitudine TEXT, longitudine TEXT)''')
     conn.commit()
     conn.close()
+
+# Avvio DB
+inizializza_db()
+
+# --- 2. FUNZIONI DI SUPPORTO ---
 
 # Callback per applicare i dati GPS trovati
 def applica_dati_gps():
@@ -70,15 +77,11 @@ def salva_visita():
         if 'gps_temp' in s: del s['gps_temp']
         
         st.toast("✅ Visita salvata!", icon="💾")
-        # Attesa breve per mostrare il toast prima del rerun (opzionale)
-        # time.sleep(1) 
         st.rerun() 
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
-# --- 2. INTERFACCIA ---
-st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
-inizializza_db()
+# --- 3. INTERFACCIA UTENTE ---
 
 st.title("💼 CRM Michelone")
 
@@ -100,7 +103,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
             try:
                 lat = loc_data['coords']['latitude']
                 lon = loc_data['coords']['longitude']
-                # User-Agent è richiesto da Nominatim per policy
                 headers = {'User-Agent': 'CRM_Michelone_App/1.0'}
                 r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", 
                                  headers=headers).json()
@@ -109,7 +111,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
                 citta = a.get('city', a.get('town', a.get('village', '')))
                 prov_full = a.get('county', a.get('state', ''))
                 
-                # Semplice logica per sigla provincia (migliorabile)
                 if prov_full and ("Roma" in prov_full or "Rome" in prov_full): 
                     prov_sigla = "RM"
                 elif prov_full: 
@@ -155,7 +156,6 @@ st.divider()
 # --- SEZIONE AUTOMATICA SCADENZE (ALERT) ---
 conn = sqlite3.connect('crm_mobile.db')
 oggi = datetime.now().strftime("%Y-%m-%d")
-# Seleziona record con data follow-up valida e <= oggi
 df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
 conn.close()
 
@@ -190,29 +190,31 @@ if not df_scadenze.empty:
 
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
+
+# Gestione stato della ricerca
+if 'ricerca_attiva' not in st.session_state:
+    st.session_state.ricerca_attiva = False
+
 f1, f2, f3 = st.columns([1.5, 1, 1])
-with f1: t_ricerca = st.text_input("Cerca...")
+with f1: t_ricerca = st.text_input("Cerca (Cliente/Città)...")
 with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 with f3: f_agente = st.selectbox("Agente", ["Seleziona...", "Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-# Logica di filtro attivata solo se ci sono input
-attiva_ricerca = (t_ricerca.strip() != "") or (f_agente != "Seleziona...")
+# Il pulsante attiva la visualizzazione
+if st.button("🔎 CERCA VISITE", use_container_width=True):
+    st.session_state.ricerca_attiva = True
 
-# Gestione Date Range (deve essere una lista/tupla di 2 elementi per filtrare)
-filtro_date_ok = False
-if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-    filtro_date_ok = True
-    attiva_ricerca = True # Se ho le date, attivo la ricerca
-
-if attiva_ricerca:
+# Mostra i risultati SOLO se la ricerca è attiva
+if st.session_state.ricerca_attiva:
     conn = sqlite3.connect('crm_mobile.db')
     df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     conn.close()
 
+    # Filtri
     if t_ricerca:
         df = df[df.apply(lambda row: t_ricerca.lower() in str(row).lower(), axis=1)]
     
-    if filtro_date_ok:
+    if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
         start_date = periodo[0].strftime("%Y-%m-%d")
         end_date = periodo[1].strftime("%Y-%m-%d")
         df = df[(df['data_ordine'] >= start_date) & (df['data_ordine'] <= end_date)]
@@ -220,7 +222,11 @@ if attiva_ricerca:
     if f_agente not in ["Tutti", "Seleziona..."]:
         df = df[df['agente'] == f_agente]
 
+    st.markdown("---")
+
     if not df.empty:
+        st.success(f"Trovate {len(df)} visite.")
+        
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
@@ -232,16 +238,12 @@ if attiva_ricerca:
                 st.write(f"**📍 Città:** {row['localita']} ({row['provincia']})")
                 st.write(f"**📝 Note:** {row['note']}")
                 
-                # Link Mappa Corretto
                 if row['latitudine'] and row['longitudine']:
-                    # Formato universale Google Maps
                     link = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
                     st.markdown(f"[📍 Vedi su Mappa]({link})")
                 
-                # --- TASTO ELIMINA ---
+                # Tasto Elimina
                 col_del_btn, col_del_confirm = st.columns([1, 4])
-                
-                # Chiave univoca per ogni bottone
                 if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
                     st.session_state[f"confirm_del_{row['id']}"] = True
                 
@@ -255,7 +257,6 @@ if attiva_ricerca:
                             c.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                             conn.commit()
                             conn.close()
-                            # Pulizia session state
                             del st.session_state[f"confirm_del_{row['id']}"]
                             st.rerun()
                     with c_no:
@@ -263,7 +264,6 @@ if attiva_ricerca:
                             st.session_state[f"confirm_del_{row['id']}"] = False
                             st.rerun()
     else:
-        st.info("Nessuna visita trovata con questi filtri.")
+        st.warning("Nessuna visita trovata con questi criteri.")
 else:
-    # Messaggio di default quando non si cerca
-    st.info("👆 Usa i filtri sopra per cercare nell'archivio.")
+    st.info("👆 Seleziona i filtri e premi 'CERCA VISITE' per vedere l'archivio.")
