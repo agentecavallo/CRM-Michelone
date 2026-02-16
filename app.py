@@ -2,7 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import requests
-import os # Ci serve per controllare se il file del logo esiste
+import os
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
@@ -79,6 +79,18 @@ def salva_visita():
         st.rerun() 
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
+
+# Funzione per generare il file Excel completo (BACKUP)
+def genera_excel_backup():
+    conn = sqlite3.connect('crm_mobile.db')
+    # Prende TUTTO senza filtri
+    df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
+    conn.close()
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Database_Completo')
+    return output.getvalue()
 
 # --- 3. INTERFACCIA UTENTE ---
 
@@ -190,6 +202,21 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
+# --- PULSANTE BACKUP (Sempre visibile) ---
+col_bk_txt, col_bk_btn = st.columns([2, 1])
+with col_bk_txt:
+    st.caption("Scarica tutto il database in Excel per sicurezza.")
+with col_bk_btn:
+    data_backup = genera_excel_backup()
+    st.download_button(
+        label="📦 BACKUP COMPLETO",
+        data=data_backup,
+        file_name=f"Backup_CRM_Michelone_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True
+    )
+st.markdown("---")
+
 if 'ricerca_attiva' not in st.session_state:
     st.session_state.ricerca_attiva = False
 
@@ -222,10 +249,11 @@ if st.session_state.ricerca_attiva:
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
         
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        # Download SOLO dei dati filtrati
+        output_filter = BytesIO()
+        with pd.ExcelWriter(output_filter, engine='xlsxwriter') as writer:
             df.drop(columns=['data_ordine', 'id']).to_excel(writer, index=False, sheet_name='Visite')
-        st.download_button("📊 SCARICA EXCEL", output.getvalue(), "report.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+        st.download_button("📊 SCARICA RICERCA (Excel)", output_filter.getvalue(), "ricerca_filtrata.xlsx", use_container_width=True)
 
         for _, row in df.iterrows():
             icon = "🤝" if row['tipo_cliente'] == "Cliente" else "🚀"
@@ -263,13 +291,12 @@ else:
     st.info("👆 Seleziona i filtri e premi 'CERCA VISITE' per vedere l'archivio.")
 
 # --- 4. LOGO/FIRMA FINALE ---
-st.write("") # Un po' di spazio
+st.write("")
 st.write("") 
-col_spazio, col_logo = st.columns([3, 1]) # Colonna vuota grande a sinistra, Logo piccolo a destra
+col_spazio, col_logo = st.columns([3, 1])
 
 with col_logo:
-    # Controlliamo se il file esiste per evitare errori se ti dimentichi di copiarlo
     if os.path.exists("logo.jpg"):
         st.image("logo.jpg", use_container_width=True)
     else:
-        st.caption("Firma mancante (carica logo.jpg)")
+        st.caption("Firma mancante")
