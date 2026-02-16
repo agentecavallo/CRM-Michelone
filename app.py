@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
-import streamlit.components.v1 as components
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
@@ -30,35 +29,6 @@ def inizializza_db():
         conn.commit()
 
 inizializza_db()
-
-# --- FUNZIONE JAVASCRIPT PER COPIARE ---
-def copia_negli_appunti(testo, id_bottone):
-    # Crea un piccolo bottone HTML/JS invisibile che esegue la copia
-    html_code = f"""
-    <button id="btn_{id_bottone}" style="
-        background-color: #f0f2f6; 
-        border: 1px solid #dcdfe3; 
-        border-radius: 5px; 
-        padding: 5px 10px; 
-        cursor: pointer;
-        width: 100%;
-        font-weight: bold;
-        color: #31333F;">
-        📋 COPIA NOTE
-    </button>
-
-    <script>
-    document.getElementById("btn_{id_bottone}").onclick = function() {{
-        const text = `{testo}`;
-        navigator.clipboard.writeText(text).then(function() {{
-            alert("Note copiate negli appunti!");
-        }}, function(err) {{
-            console.error('Errore nel copia:', err);
-        }});
-    }};
-    </script>
-    """
-    components.html(html_code, height=45)
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
@@ -124,7 +94,7 @@ def salva_visita():
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                      (cliente, s.localita_key.upper(), s.prov_key.upper(), "", 
+                      (cliente, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
                        s.lat_val, s.lon_val))
             conn.commit()
@@ -148,6 +118,7 @@ st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
+    st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
@@ -285,22 +256,7 @@ if st.session_state.ricerca_attiva:
                         st.rerun()
                 else:
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
-                    
-                    # --- NOTE CON TASTO COPIA ---
-                    st.write("**Note:**")
-                    col_note, col_copia = st.columns([2, 1])
-                    with col_note:
-                        st.info(row['note'])
-                    with col_copia:
-                        # Chiamiamo la funzione JavaScript per copiare le note
-                        copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
-                    
-                    if row['data_followup']:
-                        try:
-                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
-                            st.write(f"📅 **Ricontatto:** {data_fup_it}")
-                        except: pass
-
+                    st.write(f"**Note:** {row['note']}")
                     if row['latitudine'] and row['longitudine']:
                         st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
@@ -339,6 +295,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     
     st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
     
+    # --- NUOVA SEZIONE RIPRISTINO ---
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI**")
     file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
@@ -347,8 +304,10 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
         if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
             try:
                 df_ripristino = pd.read_excel(file_caricato)
+                # Verifica minima che il file sia quello giusto
                 if 'cliente' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
+                        # Sovrascrive la tabella 'visite'
                         df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
                     st.success("✅ Database ripristinato! Riavvio in corso...")
                     time.sleep(2)
