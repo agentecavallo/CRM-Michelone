@@ -3,7 +3,6 @@ import sqlite3
 import pandas as pd
 import requests
 import time
-import os
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
@@ -11,7 +10,6 @@ import streamlit.components.v1 as components
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
-
 DB_NAME = 'crm_mobile.db'
 
 def inizializza_db():
@@ -27,7 +25,7 @@ def inizializza_db():
 
 inizializza_db()
 
-# Inizializzazione chiavi di stato
+# Inizializzazione session_state
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
@@ -62,7 +60,6 @@ def salva_visita():
             c = conn.cursor()
             data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
             data_ord = s.data_key.strftime("%Y-%m-%d")
-            
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             giorni = {"1 gg": 1, "7 gg": 7, "15 gg": 15, "30 gg": 30}.get(scelta, 0)
@@ -76,7 +73,6 @@ def salva_visita():
                        data_visita_fmt, s.note_key, data_fup, data_ord, s.agente_key, str(s.lat_val), str(s.lon_val)))
             conn.commit()
         
-        # Reset campi
         st.session_state.cliente_key = ""
         st.session_state.note_key = ""
         st.session_state.localita_key = ""
@@ -88,38 +84,43 @@ def salva_visita():
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
+# Rilevamento GPS continuo (ma silenzioso)
+loc = get_geolocation()
+
 with st.expander("➕ NUOVA VISITA", expanded=True): 
     st.radio("Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key")
     st.text_input("Cliente", key="cliente_key")
     
     col_l, col_p = st.columns([3, 1]) 
-    with col_l: st.text_input("Località", key="localita_key")
-    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
+    # Usiamo direttamente le chiavi per permettere al GPS di scriverci dentro
+    localita_input = col_l.text_input("Località", key="localita_key")
+    provincia_input = col_p.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # --- LOGICA GPS CORRETTA ---
-    loc = get_geolocation() # Richiama il sensore GPS
-    if st.button("📍 AGGIORNA POSIZIONE GPS", use_container_width=True):
+    if st.button("📍 ATTIVA GPS / AGGIORNA CITTÀ", use_container_width=True):
         if loc and 'coords' in loc:
             lat = loc['coords']['latitude']
             lon = loc['coords']['longitude']
             st.session_state.lat_val = lat
             st.session_state.lon_val = lon
             
-            # Tentativo di recuperare città e provincia via API (Gratuita)
             try:
+                # Chiamata API per ottenere indirizzo
                 url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}"
-                res = requests.get(url, headers={'User-Agent': 'CRM_Michelone_App'}).json()
-                indirizzo = res.get('address', {})
-                citta = indirizzo.get('city', indirizzo.get('town', indirizzo.get('village', '')))
-                prov = indirizzo.get('county', '')[:2].upper()
+                res = requests.get(url, headers={'User-Agent': 'CRM_App'}).json()
+                address = res.get('address', {})
+                citta = address.get('city', address.get('town', address.get('village', '')))
+                prov = address.get('county', '')[:2].upper()
                 
-                if citta: st.session_state.localita_key = citta.upper()
-                if prov: st.session_state.prov_key = prov
-                st.toast(f"📍 Posizione trovata: {citta}", icon="📍")
-            except:
-                st.toast("📍 Coordinate acquisite (Nome città non disponibile)", icon="⚠️")
+                # AGGIORNAMENTO DIRETTO DELLO STATO
+                st.session_state.localita_key = citta.upper() if citta else ""
+                st.session_state.prov_key = prov if prov else ""
+                st.toast(f"📍 Posizione: {citta}", icon="🌍")
+                time.sleep(0.5)
+                st.rerun() # Forza Streamlit a mostrare i nuovi dati nei box
+            except Exception as e:
+                st.error("Errore nel recupero nome città, ma coordinate salvate.")
         else:
-            st.error("Assicurati di aver dato i permessi GPS al browser.")
+            st.warning("⚠️ GPS non ancora pronto. Attendi un istante e riprova. Assicurati che il GPS sia attivo sul telefono.")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -178,9 +179,9 @@ with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_back.to_excel(writer, index=False)
-        st.download_button("📥 SCARICA EXCEL (Download)", output.getvalue(), "crm_backup.xlsx", use_container_width=True)
+        st.download_button("📥 SCARICA EXCEL", output.getvalue(), "crm_backup.xlsx", use_container_width=True)
         with open(DB_NAME, "rb") as f:
-            st.download_button("💾 SCARICA FILE .DB (Per Ripristino)", f, "crm_mobile.db", use_container_width=True)
+            st.download_button("💾 SCARICA FILE .DB", f, "crm_mobile.db", use_container_width=True)
 
     st.write("---")
     st.write("### 📤 Ripristino Database")
@@ -189,7 +190,7 @@ with st.expander("📂 BACKUP E RIPRISTINO", expanded=False):
         if st.button("🔄 RIPRISTINA ORA", type="primary"):
             with open(DB_NAME, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            st.success("Database ripristinato! Ricarica la pagina.")
+            st.success("Database ripristinato!")
             time.sleep(1)
             st.rerun()
 
