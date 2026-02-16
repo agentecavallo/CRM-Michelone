@@ -2,7 +2,6 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import requests
-import os
 import time
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -12,7 +11,7 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-# Inizializzazione chiavi di stato
+# Inizializzazione chiavi di stato per la veste grafica e gestione errori
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
@@ -32,10 +31,8 @@ def inizializza_db():
 
 inizializza_db()
 
-# --- 2. FUNZIONI DI SUPPORTO ---
-
+# --- 2. FUNZIONE JAVASCRIPT PER COPIARE ---
 def copia_negli_appunti(testo, id_bottone):
-    """Componente HTML/JS per copiare il testo negli appunti dello smartphone"""
     html_code = f"""
     <button id="btn_{id_bottone}" style="
         background-color: #f0f2f6; border: 1px solid #dcdfe3; border-radius: 5px; 
@@ -46,15 +43,16 @@ def copia_negli_appunti(testo, id_bottone):
     document.getElementById("btn_{id_bottone}").onclick = function() {{
         const text = `{testo}`;
         navigator.clipboard.writeText(text).then(function() {{
-            alert("Note copiate!");
+            alert("Note copiate negli appunti!");
         }}, function(err) {{
-            console.error('Errore:', err);
+            console.error('Errore nel copia:', err);
         }});
     }};
     </script>
     """
     components.html(html_code, height=45)
 
+# --- 3. LOGICA DI SALVATAGGIO (Mantiene gli ID corretti) ---
 def salva_visita():
     s = st.session_state
     cliente = s.get('cliente_key', '').strip()
@@ -80,29 +78,32 @@ def salva_visita():
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, s.lat_val, s.lon_val))
             conn.commit()
         
-        # Reset campi
+        # Reset dei campi dopo il salvataggio (Veste grafica corretta)
         st.session_state.cliente_key = ""
         st.session_state.note_key = ""
         st.session_state.localita_key = ""
         st.session_state.prov_key = ""
-        st.toast("✅ Visita registrata!", icon="💾")
+        st.session_state.ricerca_attiva = False 
+        
+        st.toast("✅ Visita registrata con successo!", icon="💾")
         time.sleep(0.5)
         st.rerun()
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
-# --- 3. INTERFACCIA UTENTE ---
+# --- 4. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
+# REGISTRAZIONE NUOVA VISITA
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True): 
-    st.radio("Stato", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key")
+    st.radio("Seleziona Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key")
     st.text_input("Nome Cliente", key="cliente_key")
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # GPS
+    # Funzione GPS integrata nella veste grafica
     loc_data = get_geolocation()
     if st.button("📍 USA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -116,7 +117,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
                 st.session_state.prov_key = prov
                 st.session_state.lat_val, st.session_state.lon_val = str(lat), str(lon)
                 st.toast("📍 Posizione acquisita!")
-            except: st.warning("Errore GPS.")
+            except: st.warning("Errore GPS o connessione.")
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -129,13 +130,13 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
 
 st.divider()
 
-# --- 4. ARCHIVIO E RICERCA ---
-st.subheader("🔍 Archivio e Ricerca")
+# --- 5. ARCHIVIO E RICERCA ---
+st.subheader("🔍 Archivio e Gestione")
 col_search, col_agente = st.columns([2, 1])
-t_ricerca = col_search.text_input("Cerca cliente o città")
+t_ricerca = col_search.text_input("Cerca per nome o città")
 f_agente = col_agente.selectbox("Filtro Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-if st.button("🔎 MOSTRA / AGGIORNA ARCHIVIO", use_container_width=True):
+if st.button("🔎 VISUALIZZA / CERCA", use_container_width=True):
     st.session_state.ricerca_attiva = True
 
 if st.session_state.ricerca_attiva:
@@ -150,78 +151,72 @@ if st.session_state.ricerca_attiva:
     if not df.empty:
         for idx, row in df.iterrows():
             db_id = row['id']
-            # Gestione ID "nan" per sicurezza
-            id_visibile = int(db_id) if pd.notnull(db_id) else "N.D."
-            ukey = f"rec_{id_visibile}"
+            ukey = f"rec_{db_id}" # ID univoco del database
             
-            with st.expander(f"🆔 {id_visibile} | {row['cliente']} ({row['data']})"):
+            with st.expander(f"{row['tipo_cliente']} - {row['cliente']} ({row['data']})"):
                 
                 if st.session_state.edit_mode_id == ukey:
-                    # MODALITÀ EDIT
-                    new_c = st.text_input("Modifica Cliente", value=row['cliente'], key=f"ec_{ukey}")
-                    new_n = st.text_area("Modifica Note", value=row['note'], key=f"en_{ukey}")
-                    ce1, ce2 = st.columns(2)
-                    if ce1.button("💾 AGGIORNA", key=f"up_{ukey}", type="primary", use_container_width=True):
+                    # MODALITÀ MODIFICA
+                    new_c = st.text_input("Cliente", value=row['cliente'], key=f"ec_{ukey}")
+                    new_n = st.text_area("Note", value=row['note'], key=f"en_{ukey}")
+                    col1, col2 = st.columns(2)
+                    if col1.button("💾 AGGIORNA", key=f"up_{ukey}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
                             conn.execute("UPDATE visite SET cliente=?, note=? WHERE id=?", (new_c, new_n, db_id))
                         st.session_state.edit_mode_id = None
                         st.rerun()
-                    if ce2.button("❌ ANNULLA", key=f"can_{ukey}", use_container_width=True):
+                    if col2.button("❌ ANNULLA", key=f"can_{ukey}", use_container_width=True):
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
-                    # MODALITÀ VISTA
+                    # MODALITÀ VISUALIZZAZIONE
+                    st.write(f"**🆔 ID Operazione:** {db_id}")
                     st.write(f"**📍 Località:** {row['localita']} ({row['provincia']})")
-                    st.write(f"**👤 Agente:** {row['agente']} | **Tipo:** {row['tipo_cliente']}")
                     st.info(f"**Note:** {row['note']}")
                     
-                    # Tasto Copia
                     copia_negli_appunti(row['note'].replace("`", "'"), f"cp_{ukey}")
                     
                     st.divider()
                     cm, ce = st.columns(2)
-                    if cm.button("✏️ Modifica", key=f"btn_ed_{ukey}", use_container_width=True):
+                    if cm.button("✏️ Modifica", key=f"medit_{ukey}", use_container_width=True):
                         st.session_state.edit_mode_id = ukey
                         st.rerun()
-                    
-                    if ce.button("🗑️ Elimina", key=f"btn_del_{ukey}", use_container_width=True):
+                    if ce.button("🗑️ Elimina", key=f"mdel_{ukey}", use_container_width=True):
                         st.session_state.delete_mode_id = ukey
                         st.rerun()
                     
-                    # Conferma Eliminazione
                     if st.session_state.delete_mode_id == ukey:
-                        st.warning("Sei sicuro?")
-                        if st.button("SÌ, ELIMINA", key=f"conf_{ukey}", type="primary", use_container_width=True):
+                        st.error("Confermi l'eliminazione definitiva?")
+                        if st.button("SÌ, ELIMINA ORA", key=f"confdel_{ukey}", type="primary", use_container_width=True):
                             with sqlite3.connect('crm_mobile.db') as conn:
                                 conn.execute("DELETE FROM visite WHERE id=?", (db_id,))
                             st.session_state.delete_mode_id = None
                             st.rerun()
     else:
-        st.warning("Nessun record trovato.")
+        st.warning("Nessun contatto trovato.")
 
-# --- 5. BACKUP E RESET ---
+# --- 6. BACKUP E AMMINISTRAZIONE ---
 st.divider()
-with st.expander("🛠️ STRUMENTI E BACKUP"):
-    # Export Excel
+with st.expander("🛠️ AMMINISTRAZIONE"):
     with sqlite3.connect('crm_mobile.db') as conn:
         df_all = pd.read_sql_query("SELECT * FROM visite", conn)
+    
     if not df_all.empty:
         output = BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_all.to_excel(writer, index=False)
-        st.download_button("📥 SCARICA EXCEL", output.getvalue(), "archivio_crm.xlsx", use_container_width=True)
-    
+        st.download_button("📥 SCARICA TUTTO IN EXCEL", output.getvalue(), "crm_michelone.xlsx", use_container_width=True)
+
     st.markdown("---")
-    # Reset Totale
-    st.error("Zona Pericolosa")
-    if st.button("🔥 RESET COMPLETO DATABASE"):
+    st.warning("Area Pericolosa")
+    if st.button("🔥 RESET TOTALE DATABASE"):
         with sqlite3.connect('crm_mobile.db') as conn:
             conn.execute("DROP TABLE IF EXISTS visite")
         st.rerun()
 
 # Logo finale
 try:
-    st.image("logo.jpg", width=150)
-    st.caption("CRM Michelone Approved")
+    st.image("logo.jpg", width=120)
+    st.caption("CRM MICHELONE APPROVED")
 except:
-    st.markdown("<center>✅ <b>MICHELONE APPROVED</b></center>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em;'>✅ MICHELONE APPROVED</p>", unsafe_allow_html=True)
