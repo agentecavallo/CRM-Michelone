@@ -11,12 +11,6 @@ from streamlit_js_eval import get_geolocation
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
-if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
-if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
-if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
-if 'confirm_reset' not in st.session_state: st.session_state.confirm_reset = False
-
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
@@ -30,179 +24,106 @@ def inizializza_db():
 
 inizializza_db()
 
-# --- 2. FUNZIONI DI SUPPORTO ---
+# Inizializzazione variabili di stato per evitare errori
+if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
+if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
-def salva_visita():
-    """Funzione per salvare i dati nel database senza generare errori di rerun."""
-    s = st.session_state
-    cliente = s.get('cliente_key', '').strip()
-    note = s.get('note_key', '').strip()
-    
-    if cliente and note:
+# --- 2. LOGICA DI SALVATAGGIO ---
+def salva_dati(dati_form):
+    """Salva i dati nel DB senza toccare direttamente lo session_state dei widget"""
+    if dati_form['cliente'] and dati_form['note']:
         with sqlite3.connect('crm_mobile.db') as conn:
             c = conn.cursor()
-            data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
-            data_ord = s.data_key.strftime("%Y-%m-%d")
-            
-            scelta = s.get('fup_opt', 'No')
-            data_fup = ""
-            giorni = {"1 gg": 1, "7 gg": 7, "15 gg": 15, "30 gg": 30}
-            giorni_da_aggiungere = giorni.get(scelta, 0)
-            
-            if giorni_da_aggiungere > 0:
-                data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
-            
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
-                      (cliente, s.localita_key.upper(), s.prov_key.upper(), s.tipo_key, 
-                       data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
-                       s.lat_val, s.lon_val))
+                      (dati_form['cliente'], dati_form['localita'].upper(), dati_form['prov'].upper(), 
+                       dati_form['tipo'], dati_form['data_visita'], dati_form['note'], 
+                       dati_form['data_fup'], dati_form['data_ord'], dati_form['agente'], 
+                       dati_form['lat'], dati_form['lon']))
             conn.commit()
-        
-        # Reset dei campi nello stato della sessione
-        st.session_state.cliente_key = ""
-        st.session_state.localita_key = ""
-        st.session_state.prov_key = ""
-        st.session_state.note_key = ""
-        st.session_state.lat_val = ""
-        st.session_state.lon_val = ""
-        st.session_state.fup_opt = "No"
-        st.toast("✅ Visita salvata con successo!", icon="💾")
-    else:
-        st.error("⚠️ Inserisci almeno Cliente e Note!")
-
-def applica_dati_gps():
-    if 'gps_temp' in st.session_state:
-        dati = st.session_state['gps_temp']
-        st.session_state.localita_key = dati['citta']
-        st.session_state.prov_key = dati['prov']
-        st.session_state.lat_val = dati['lat']
-        st.session_state.lon_val = dati['lon']
-        del st.session_state['gps_temp']
+        return True
+    return False
 
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
-with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
-    st.text_input("Nome Cliente", key="cliente_key")
-    st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
-    
-    col_l, col_p = st.columns([3, 1]) 
-    with col_l: st.text_input("Località", key="localita_key")
-    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
-
-    # GPS Logic
-    loc_data = get_geolocation()
-    if st.button("📍 USA POSIZIONE GPS", use_container_width=True):
-        if loc_data and 'coords' in loc_data:
-            try:
-                lat, lon = loc_data['coords']['latitude'], loc_data['coords']['longitude']
-                headers = {'User-Agent': 'CRM_Michelone_App/1.0'}
-                r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", headers=headers).json()
-                a = r.get('address', {})
-                citta = a.get('city', a.get('town', a.get('village', '')))
-                prov_full = a.get('county', '')
-                prov_sigla = "RM" if "Roma" in prov_full or "Rome" in prov_full else (prov_full[:2].upper() if prov_full else "??")
-                st.session_state['gps_temp'] = {'citta': citta.upper(), 'prov': prov_sigla, 'lat': str(lat), 'lon': str(lon)}
-            except: st.warning("Errore GPS.")
-    
-    if 'gps_temp' in st.session_state:
-        d = st.session_state['gps_temp']
-        st.info(f"🛰️ Trovato: **{d['citta']} ({d['prov']})**")
-        if st.button("✅ CONFERMA POSIZIONE", on_click=applica_dati_gps): st.rerun()
-
-    st.markdown("---")
-    c1, c2 = st.columns(2)
-    with c1: st.date_input("Data", datetime.now(), key="data_key")
-    with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
-    
-    st.text_area("Note", key="note_key", height=100)
-    st.radio("Pianifica Ricontatto", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], key="fup_opt", horizontal=True)
-    
-    # Bottone Salva - Rimosso on_click per evitare l'errore giallo di rerun
-    if st.button("💾 SALVA VISITA", use_container_width=True, type="primary"):
-        salva_visita()
-        time.sleep(1)
-        st.rerun()
+with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
+    # Usiamo un form per evitare crash di session_state
+    with st.form("form_visita", clear_on_submit=True):
+        cliente = st.text_input("Nome Cliente")
+        tipo = st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], horizontal=True)
+        
+        col_l, col_p = st.columns([3, 1])
+        localita = col_l.text_input("Località")
+        provincia = col_p.text_input("Prov.", max_chars=2)
+        
+        c1, c2 = st.columns(2)
+        data_sel = c1.date_input("Data Visita", datetime.now())
+        agente = c2.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+        
+        note = st.text_area("Note Visita")
+        fup = st.radio("Pianifica Ricontatto", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], horizontal=True)
+        
+        submit = st.form_submit_button("💾 SALVA VISITA", use_container_width=True)
+        
+        if submit:
+            # Calcolo date
+            data_visita_str = data_sel.strftime("%d/%m/%Y")
+            data_ord_str = data_sel.strftime("%Y-%m-%d")
+            data_fup_str = ""
+            giorni = {"1 gg": 1, "7 gg": 7, "15 gg": 15, "30 gg": 30}
+            if fup != "No":
+                data_fup_str = (data_sel + timedelta(days=giorni[fup])).strftime("%Y-%m-%d")
+            
+            successo = salva_dati({
+                'cliente': cliente, 'localita': localita, 'prov': provincia,
+                'tipo': tipo, 'data_visita': data_visita_str, 'note': note,
+                'data_fup': data_fup_str, 'data_ord': data_ord_str, 'agente': agente,
+                'lat': "", 'lon': ""
+            })
+            
+            if successo:
+                st.balloons()
+                st.success("Visita registrata! L'ID verrà assegnato automaticamente.")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("⚠️ Inserisci almeno Cliente e Note!")
 
 st.divider()
 
-# --- ALERT SCADENZE ---
-with sqlite3.connect('crm_mobile.db') as conn:
-    oggi = datetime.now().strftime("%Y-%m-%d")
-    df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}'", conn)
-
-if not df_scadenze.empty:
-    st.error(f"⚠️ **DA RICONTATTARE: {len(df_scadenze)}**")
-    for _, row in df_scadenze.iterrows():
-        with st.container(border=True):
-            st.write(f"**{row['cliente']}** ({row['localita']})")
-            if st.button("✅ Fatto", key=f"ok_{row['id']}"):
-                with sqlite3.connect('crm_mobile.db') as conn:
-                    conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
-                st.rerun()
-
-# --- RICERCA E ARCHIVIO ---
+# --- 4. ARCHIVIO E VISUALIZZAZIONE ID ---
 st.subheader("🔍 Archivio Visite")
-f1, f2, f3 = st.columns([1.5, 1, 1])
-t_ricerca = f1.text_input("Cerca Cliente")
-f_agente = f3.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-
-if st.button("🔎 AVVIA RICERCA", use_container_width=True):
+if st.button("🔎 MOSTRA/AGGIORNA ARCHIVIO", use_container_width=True):
     st.session_state.ricerca_attiva = True
 
 if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
+        # Recuperiamo i dati assicurandoci che l'ID sia un intero
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
     
-    if t_ricerca:
-        df = df[df['cliente'].str.contains(t_ricerca, case=False)]
-    if f_agente != "Tutti":
-        df = df[df['agente'] == f_agente]
-
-    for _, row in df.iterrows():
-        # FIX: ID pulito (senza .0) e gestione nan
-        id_int = int(row['id']) if pd.notnull(row['id']) else "???"
-        
-        with st.expander(f"🆔 {id_int} | {row['data']} - {row['cliente']}"):
-            if st.session_state.edit_mode_id == row['id']:
-                # Modalità Modifica
-                new_note = st.text_area("Modifica Note", value=row['note'], key=f"ed_{row['id']}")
-                if st.button("💾 AGGIORNA", key=f"up_{row['id']}"):
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET note=? WHERE id=?", (new_note, row['id']))
-                    st.session_state.edit_mode_id = None
-                    st.rerun()
-            else:
-                st.write(f"**Agente:** {row['agente']} | **Località:** {row['localita']}")
-                st.write(f"**Note:** {row['note']}")
-                c1, c2 = st.columns(2)
-                if c1.button("✏️ Modifica", key=f"eb_{row['id']}"):
-                    st.session_state.edit_mode_id = row['id']
-                    st.rerun()
-                if c2.button("🗑️ Elimina", key=f"db_{row['id']}"):
+    if not df.empty:
+        for _, row in df.iterrows():
+            # Pulizia ID: se è NaN mettiamo "Nuovo", altrimenti numero intero
+            id_pulito = int(row['id']) if pd.notnull(row['id']) else "N.D."
+            
+            with st.expander(f"🆔 ID: {id_pulito} | {row['data']} - {row['cliente']}"):
+                st.write(f"**Località:** {row['localita']} ({row['provincia']}) | **Agente:** {row['agente']}")
+                st.info(f"**Note:** {row['note']}")
+                if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("DELETE FROM visite WHERE id=?", (row['id'],))
                     st.rerun()
+    else:
+        st.warning("Nessuna visita in archivio.")
 
-# --- AMMINISTRAZIONE ---
-st.divider()
-with st.expander("🛠️ GESTIONE DATI E RIPRISTINO"):
-    # Ripristino migliorato
-    file_caricato = st.file_uploader("Carica Excel di Backup", type=["xlsx"])
-    if file_caricato and st.button("📥 IMPORTA DATI"):
-        df_ripr = pd.read_excel(file_caricato)
-        with sqlite3.connect('crm_mobile.db') as conn:
-            conn.execute("DELETE FROM visite")
-            # Assicuriamoci che l'ID non crei conflitti durante l'import
-            df_ripr.to_sql('visite', conn, if_exists='append', index=False)
-        st.success("Dati ripristinati correttamente!")
-        time.sleep(1)
-        st.rerun()
-
-    if st.button("🗑️ RESET TOTALE DATABASE", type="secondary"):
+# --- 5. RESET TOTALE (PER PULIRE I "NAN") ---
+with st.expander("🛠️ ZONA PERICOLOSA"):
+    st.warning("Se vedi ancora degli ID 'nan', usa questo tasto per resettare il database e ripartire pulito.")
+    if st.button("🔥 RESET TOTALE DATABASE"):
         with sqlite3.connect('crm_mobile.db') as conn:
             conn.execute("DROP TABLE IF EXISTS visite")
-        st.warning("Database eliminato. Ricarica la pagina per ricrearlo pulito.")
+        st.success("Database eliminato! Ricarica la pagina.")
+        time.sleep(1)
         st.rerun()
