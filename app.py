@@ -11,7 +11,6 @@ from streamlit_js_eval import get_geolocation
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-# Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
@@ -233,7 +232,8 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            with st.expander(f"{row['data']} - {row['cliente']} ({row['agente']})"):
+            # Ho aggiunto l'ID nel titolo dell'expander per controllo
+            with st.expander(f"ID: {row['id']} | {row['data']} - {row['cliente']} ({row['agente']})"):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
@@ -291,7 +291,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
 
     with col_back:
         st.write("📤 **Backup**")
-        # 1. Backup Excel
         with sqlite3.connect('crm_mobile.db') as conn:
             df_full = pd.read_sql_query("SELECT * FROM visite", conn)
         
@@ -307,7 +306,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
             use_container_width=True
         )
 
-        # 2. Backup del file Database reale (.db)
         try:
             with open("crm_mobile.db", "rb") as f:
                 st.download_button(
@@ -333,11 +331,15 @@ with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
                             f.write(file_caricato.getbuffer())
                         st.success("✅ Database .db ripristinato!")
                     else:
+                        # --- SEZIONE CORRETTA PER L'ID ---
                         df_ripristino = pd.read_excel(file_caricato)
                         if 'cliente' in df_ripristino.columns:
                             with sqlite3.connect('crm_mobile.db') as conn:
-                                df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
-                            st.success("✅ Dati importati da Excel!")
+                                # Svuota i dati ma non distruggere la struttura ID
+                                conn.execute("DELETE FROM visite")
+                                # Inserisce i dati dall'excel nella tabella esistente
+                                df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                            st.success("✅ Dati importati e ID ripristinati!")
                         else:
                             st.error("❌ Il file non sembra un backup valido.")
                     
@@ -346,13 +348,12 @@ with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
                 except Exception as e:
                     st.error(f"Errore durante il ripristino: {e}")
 
-    # --- MANUTENZIONE STRAORDINARIA ---
     st.markdown("---")
     st.write("⚙️ **Manutenzione Straordinaria**")
     c1, c2 = st.columns(2)
 
     with c1:
-        if st.button("🧹 Ottimizza Database", use_container_width=True, help="Compatta il database e libera spazio"):
+        if st.button("🧹 Ottimizza Database", use_container_width=True):
             with sqlite3.connect('crm_mobile.db') as conn:
                 conn.execute("VACUUM")
             st.toast("Database ottimizzato!", icon="✨")
@@ -363,7 +364,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E MANUTENZIONE DATABASE"):
                 st.session_state.confirm_reset = True
                 st.rerun()
         else:
-            st.warning("Sei SICURO? Perderai tutto!")
+            st.warning("Sei SICURO?")
             cr1, cr2 = st.columns(2)
             if cr1.button("SÌ, CANCELLA", type="primary", use_container_width=True):
                 with sqlite3.connect('crm_mobile.db') as conn:
