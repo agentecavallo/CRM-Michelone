@@ -120,6 +120,7 @@ def salva_visita():
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
+# --- MODULO VISITA (CHIUSO DI DEFAULT) ---
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
     st.radio("Stato", ["Cliente", "Potenziale (Prospect)"], key="tipo_key", horizontal=True)
@@ -168,7 +169,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
 
 st.divider()
 
-# --- ALERT SCADENZE (AGGIORNATO CON PULSANTI POSTICIPO) ---
+# --- ALERT SCADENZE (LAYOUT ORIZZONTALE MOBILE) ---
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi = datetime.now().strftime("%Y-%m-%d")
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
@@ -185,34 +186,33 @@ if not df_scadenze.empty:
             msg_scadenza = "Scaduto"
 
         with st.container(border=True):
-            # Layout: Testo a sinistra (60%), Pulsanti a destra (40%)
-            col_t, col_b = st.columns([1.5, 1])
+            # 1. Info Cliente (Riga intera)
+            st.markdown(f"**{row['cliente']}** - {row['localita']}")
+            st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            with col_t:
-                st.markdown(f"**{row['cliente']}**")
-                st.caption(f"{row['localita']}")
-                st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
+            st.write("") # Spaziatore
             
-            with col_b:
-                # 3 Colonne per i 3 pulsanti
-                btn_1, btn_7, btn_ok = st.columns(3)
-                
-                # Pulsante +1 Giorno
-                if btn_1.button("+1", key=f"p1_{row['id']}", help="Posticipa a domani"):
+            # 2. Pulsanti (Riga dedicata con 3 colonne)
+            c1, c2, c3 = st.columns([1, 1, 1])
+            
+            with c1:
+                # use_container_width=True forza il bottone ad allargarsi
+                if st.button("+1 ☀️", key=f"p1_{row['id']}", help="Domani", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
-                
-                # Pulsante +7 Giorni
-                if btn_7.button("+7", key=f"p7_{row['id']}", help="Posticipa di una settimana"):
+            
+            with c2:
+                if st.button("+7 📅", key=f"p7_{row['id']}", help="Settimana prox", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
 
-                # Pulsante Fatto
-                if btn_ok.button("✅", key=f"ok_{row['id']}", help="Segna come completato"):
+            with c3:
+                # type="primary" rende il bottone più visibile (solitamente rosso/pieno)
+                if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
@@ -242,7 +242,8 @@ if st.button("🔎 CERCA VISITE", use_container_width=True):
                 st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                 st.write(f"**Note:** {row['note']}")
                 if row['latitudine'] and row['longitudine']:
-                    st.markdown(f"[📍 Mappa](http://maps.google.com/?q={row['latitudine']},{row['longitudine']})")
+                    # Link Google Maps ottimizzato per mobile
+                    st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                 
                 if st.button("🗑️ Elimina", key=f"del_{row['id']}"):
                     with sqlite3.connect('crm_mobile.db') as conn:
