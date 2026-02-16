@@ -1,19 +1,10 @@
+import streamlit as st
+import sqlite3
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
-
-# --- CONFIGURAZIONE PAGINA ---
-st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
-
-# --- VISUALIZZAZIONE LOGO ---
-# Se carichi il file logo.jpg su GitHub nella stessa cartella di app.py, usa questo:
-try:
-    st.image("logo.jpg", width=250)
-except:
-    # Se il file non è ancora su GitHub, mostra l'icona standard
-    st.title("💼 CRM Michelone")
 
 # --- 1. FUNZIONI DI SUPPORTO ---
 def inizializza_db():
@@ -27,7 +18,7 @@ def inizializza_db():
                   latitudine TEXT, longitudine TEXT)''')
     conn.commit()
     conn.close()
-    
+
 # Callback per evitare errori GPS
 def applica_dati_gps():
     if 'gps_temp' in st.session_state:
@@ -243,5 +234,4 @@ if t_ricerca.strip() != "" or f_agente != "Seleziona...":
     else:
         st.info("Nessuna visita trovata.")
 else:
-
     st.caption("Usa i filtri per cercare.")
