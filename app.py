@@ -101,7 +101,6 @@ def salva_visita():
     s = st.session_state
     cliente = s.get('cliente_key', '').strip()
     note = s.get('note_key', '').strip()
-    # Recuperiamo il tipo cliente selezionato
     tipo_cli = s.get('tipo_cliente_key', '🤝 Cliente')
     
     if cliente and note:
@@ -148,7 +147,6 @@ def salva_visita():
 st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
-    # SELETTORE TIPO CLIENTE (BOTTONI)
     st.write("Tipologia:")
     st.radio("Seleziona Tipo", ["🤝 Cliente", "🚀 Prospect"], horizontal=True, key="tipo_cliente_key", label_visibility="collapsed")
     
@@ -215,7 +213,6 @@ if not df_scadenze.empty:
             msg_scadenza = "Scade OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
         except: msg_scadenza = "Scaduto"
 
-        # Recupera icona tipo cliente (se vuoto mette default)
         icona_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
 
         with st.container(border=True):
@@ -269,14 +266,41 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            # Recupera icona o mette default se è vecchia
             icona_display = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
             
             with st.expander(f"{icona_display} {row['data']} - {row['cliente']} ({row['agente']})"):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     
-                    # Modifica anche il tipo in fase di edit
+                    # --- GESTIONE DATE IN EDIT ---
+                    col_d1, col_d2 = st.columns(2)
+                    
+                    # 1. Modifica Data Visita
+                    try:
+                        data_visita_obj = datetime.strptime(row['data'], "%d/%m/%Y").date()
+                    except:
+                        data_visita_obj = datetime.now().date()
+                    
+                    with col_d1:
+                        new_data_visita = st.date_input("Data Visita", data_visita_obj, key=f"e_dvis_{row['id']}")
+
+                    # 2. Modifica Data Followup (Ricontatto)
+                    # Controlla se c'è già un ricontatto
+                    has_fup = True if row['data_followup'] else False
+                    
+                    with col_d2:
+                        enable_fup = st.checkbox("Pianifica Ricontatto", value=has_fup, key=f"chk_fup_{row['id']}")
+                        new_data_fup_val = None
+                        if enable_fup:
+                            try:
+                                default_fup = datetime.strptime(row['data_followup'], "%Y-%m-%d").date()
+                            except:
+                                default_fup = datetime.now().date() + timedelta(days=1)
+                            new_data_fup_val = st.date_input("Data Ricontatto", default_fup, key=f"e_dfup_{row['id']}")
+                    
+                    st.markdown("---")
+                    
+                    # --- ALTRI CAMPI EDIT ---
                     curr_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
                     opts_tipo = ["🤝 Cliente", "🚀 Prospect"]
                     idx_tipo = 0
@@ -295,9 +319,14 @@ if st.session_state.ricerca_attiva:
                     
                     cs, cc = st.columns(2)
                     if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
+                        # Preparazione date per il DB
+                        save_data_fmt = new_data_visita.strftime("%d/%m/%Y")
+                        save_data_ord = new_data_visita.strftime("%Y-%m-%d")
+                        save_fup = new_data_fup_val.strftime("%Y-%m-%d") if enable_fup and new_data_fup_val else ""
+
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=?, tipo_cliente=? WHERE id=?""",
-                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_tipo, row['id']))
+                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=?, tipo_cliente=?, data=?, data_ordine=?, data_followup=? WHERE id=?""",
+                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_tipo, save_data_fmt, save_data_ord, save_fup, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
@@ -320,7 +349,6 @@ if st.session_state.ricerca_attiva:
                         except: pass
 
                     if row['latitudine'] and row['longitudine']:
-                        # Fix URL Mappe
                         st.markdown(f"[📍 Mappa](http://maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
                     cb_m, cb_d = st.columns([1, 1])
@@ -381,14 +409,10 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
 st.write("") 
 st.divider() 
 
-# Creiamo tre colonne per centrare bene l'immagine
 col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
-
 with col_f2:
     try:
-        # Carichiamo il logo.jpg (Assicurati che sia nella stessa cartella del file .py)
         st.image("logo.jpg", use_container_width=True)
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
-        # Messaggio se l'immagine manca
         st.info("✅ Michelone Approved")
