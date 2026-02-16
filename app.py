@@ -205,7 +205,7 @@ with sqlite3.connect('crm_mobile.db') as conn:
 
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
-    for _, row in df_scadenze.iterrows():
+    for idx_alert, row in df_scadenze.iterrows(): # Usiamo idx_alert per sicurezza
         try:
             d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
@@ -219,20 +219,21 @@ if not df_scadenze.empty:
             st.markdown(f"{icona_tipo} **{row['cliente']}** - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             c1, c2, c3 = st.columns([1, 1, 1])
+            # Aggiungo suffisso _al per alert per evitare conflitti con ricerca
             with c1:
-                if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
+                if st.button("+1 ☀️", key=f"p1_{row['id']}_al_{idx_alert}", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
             with c2:
-                if st.button("+7 📅", key=f"p7_{row['id']}", use_container_width=True):
+                if st.button("+7 📅", key=f"p7_{row['id']}_al_{idx_alert}", use_container_width=True):
                     nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
             with c3:
-                if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
+                if st.button("✅ Fatto", key=f"ok_{row['id']}_al_{idx_alert}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
@@ -264,8 +265,10 @@ if st.session_state.ricerca_attiva:
         if st.button("❌ Chiudi Ricerca"):
             st.session_state.ricerca_attiva = False
             st.rerun()
-
-        for _, row in df.iterrows():
+        
+        # FIX IMPORTANTE: Uso 'enumerate' per creare chiavi univoche (idx_visita)
+        # anche se nel DB ci sono ID duplicati.
+        for idx_visita, (index, row) in enumerate(df.iterrows()):
             icona_display = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
             
             with st.expander(f"{icona_display} {row['data']} - {row['cliente']} ({row['agente']})"):
@@ -275,61 +278,58 @@ if st.session_state.ricerca_attiva:
                     # --- GESTIONE DATE IN EDIT ---
                     col_d1, col_d2 = st.columns(2)
                     
-                    # 1. Modifica Data Visita
                     try:
                         data_visita_obj = datetime.strptime(row['data'], "%d/%m/%Y").date()
                     except:
                         data_visita_obj = datetime.now().date()
                     
                     with col_d1:
-                        new_data_visita = st.date_input("Data Visita", data_visita_obj, key=f"e_dvis_{row['id']}")
+                        # Chiave univoca con idx_visita
+                        new_data_visita = st.date_input("Data Visita", data_visita_obj, key=f"e_dvis_{row['id']}_{idx_visita}")
 
-                    # 2. Modifica Data Followup (Ricontatto)
-                    # Controlla se c'è già un ricontatto
                     has_fup = True if row['data_followup'] else False
                     
                     with col_d2:
-                        enable_fup = st.checkbox("Pianifica Ricontatto", value=has_fup, key=f"chk_fup_{row['id']}")
+                        enable_fup = st.checkbox("Pianifica Ricontatto", value=has_fup, key=f"chk_fup_{row['id']}_{idx_visita}")
                         new_data_fup_val = None
                         if enable_fup:
                             try:
                                 default_fup = datetime.strptime(row['data_followup'], "%Y-%m-%d").date()
                             except:
                                 default_fup = datetime.now().date() + timedelta(days=1)
-                            new_data_fup_val = st.date_input("Data Ricontatto", default_fup, key=f"e_dfup_{row['id']}")
+                            new_data_fup_val = st.date_input("Data Ricontatto", default_fup, key=f"e_dfup_{row['id']}_{idx_visita}")
                     
                     st.markdown("---")
                     
-                    # --- ALTRI CAMPI EDIT ---
                     curr_tipo = row['tipo_cliente'] if row['tipo_cliente'] else "🤝 Cliente"
                     opts_tipo = ["🤝 Cliente", "🚀 Prospect"]
                     idx_tipo = 0
                     if curr_tipo in opts_tipo: idx_tipo = opts_tipo.index(curr_tipo)
                     
-                    new_tipo = st.radio("Tipo", opts_tipo, index=idx_tipo, horizontal=True, key=f"e_tipo_{row['id']}")
-                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    new_tipo = st.radio("Tipo", opts_tipo, index=idx_tipo, horizontal=True, key=f"e_tipo_{row['id']}_{idx_visita}")
+                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}_{idx_visita}")
                     
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
-                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
-                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
-                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
-                    new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
+                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}_{idx_visita}")
+                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}_{idx_visita}")
+                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}_{idx_visita}")
+                    new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}_{idx_visita}")
                     
                     cs, cc = st.columns(2)
-                    if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
-                        # Preparazione date per il DB
+                    if cs.button("💾 SALVA", key=f"save_{row['id']}_{idx_visita}", type="primary", use_container_width=True):
                         save_data_fmt = new_data_visita.strftime("%d/%m/%Y")
                         save_data_ord = new_data_visita.strftime("%Y-%m-%d")
                         save_fup = new_data_fup_val.strftime("%Y-%m-%d") if enable_fup and new_data_fup_val else ""
 
                         with sqlite3.connect('crm_mobile.db') as conn:
+                            # Aggiorna per ID. Se ci sono duplicati, li aggiorna tutti (meglio che crashare)
                             conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=?, tipo_cliente=?, data=?, data_ordine=?, data_followup=? WHERE id=?""",
                                          (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_tipo, save_data_fmt, save_data_ord, save_fup, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
-                    if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
+                    if cc.button("❌ ANNULLA", key=f"canc_{row['id']}_{idx_visita}", use_container_width=True):
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
@@ -339,8 +339,9 @@ if st.session_state.ricerca_attiva:
                     col_note, col_copia = st.columns([2, 1])
                     with col_note:
                         st.info(row['note'])
+                    # Aggiunto suffisso anche qui per sicurezza
                     with col_copia:
-                        copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
+                        copia_negli_appunti(row['note'].replace("`", "'"), f"{row['id']}_{idx_visita}")
                     
                     if row['data_followup']:
                         try:
@@ -352,23 +353,24 @@ if st.session_state.ricerca_attiva:
                         st.markdown(f"[📍 Mappa](http://maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
                     cb_m, cb_d = st.columns([1, 1])
-                    if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
+                    # QUI ERA L'ERRORE: Ora la key è unica grazie a idx_visita
+                    if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}_{idx_visita}"):
                         st.session_state.edit_mode_id = row['id']
                         st.rerun()
                     
-                    key_conf = f"confirm_del_{row['id']}"
-                    if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
+                    key_conf = f"confirm_del_{row['id']}_{idx_visita}"
+                    if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}_{idx_visita}"):
                         st.session_state[key_conf] = True
                         st.rerun()
                     
                     if st.session_state.get(key_conf, False):
                         st.warning("⚠️ Sicuro?")
                         cy, cn = st.columns(2)
-                        if cy.button("SÌ", key=f"yes_{row['id']}", type="primary"):
+                        if cy.button("SÌ", key=f"yes_{row['id']}_{idx_visita}", type="primary"):
                             with sqlite3.connect('crm_mobile.db') as conn:
                                 conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                             st.rerun()
-                        if cn.button("NO", key=f"no_{row['id']}"):
+                        if cn.button("NO", key=f"no_{row['id']}_{idx_visita}"):
                             del st.session_state[key_conf]
                             st.rerun()
     else:
