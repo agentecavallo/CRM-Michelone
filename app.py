@@ -2,6 +2,7 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import requests
+import os # Ci serve per controllare se il file del logo esiste
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
@@ -26,7 +27,6 @@ inizializza_db()
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
-# Callback per applicare i dati GPS trovati
 def applica_dati_gps():
     if 'gps_temp' in st.session_state:
         dati = st.session_state['gps_temp']
@@ -59,8 +59,7 @@ def salva_visita():
         elif scelta == "30 gg":
             data_scadenza = s.data_key + timedelta(days=30)
             data_fup = data_scadenza.strftime("%Y-%m-%d")
-        # ----------------------------------------
-
+        
         lat = s.get('lat_val', "")
         lon = s.get('lon_val', "")
         
@@ -153,7 +152,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
 
 st.divider()
 
-# --- SEZIONE AUTOMATICA SCADENZE (ALERT) ---
+# --- ALERT SCADENZE ---
 conn = sqlite3.connect('crm_mobile.db')
 oggi = datetime.now().strftime("%Y-%m-%d")
 df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
@@ -191,7 +190,6 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# Gestione stato della ricerca
 if 'ricerca_attiva' not in st.session_state:
     st.session_state.ricerca_attiva = False
 
@@ -200,17 +198,14 @@ with f1: t_ricerca = st.text_input("Cerca (Cliente/Città)...")
 with f2: periodo = st.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 with f3: f_agente = st.selectbox("Agente", ["Seleziona...", "Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-# Il pulsante attiva la visualizzazione
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
 
-# Mostra i risultati SOLO se la ricerca è attiva
 if st.session_state.ricerca_attiva:
     conn = sqlite3.connect('crm_mobile.db')
     df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     conn.close()
 
-    # Filtri
     if t_ricerca:
         df = df[df.apply(lambda row: t_ricerca.lower() in str(row).lower(), axis=1)]
     
@@ -242,7 +237,6 @@ if st.session_state.ricerca_attiva:
                     link = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
                     st.markdown(f"[📍 Vedi su Mappa]({link})")
                 
-                # Tasto Elimina
                 col_del_btn, col_del_confirm = st.columns([1, 4])
                 if st.button("🗑️ Elimina", key=f"pre_del_{row['id']}"):
                     st.session_state[f"confirm_del_{row['id']}"] = True
@@ -267,3 +261,15 @@ if st.session_state.ricerca_attiva:
         st.warning("Nessuna visita trovata con questi criteri.")
 else:
     st.info("👆 Seleziona i filtri e premi 'CERCA VISITE' per vedere l'archivio.")
+
+# --- 4. LOGO/FIRMA FINALE ---
+st.write("") # Un po' di spazio
+st.write("") 
+col_spazio, col_logo = st.columns([3, 1]) # Colonna vuota grande a sinistra, Logo piccolo a destra
+
+with col_logo:
+    # Controlliamo se il file esiste per evitare errori se ti dimentichi di copiarlo
+    if os.path.exists("logo.jpg"):
+        st.image("logo.jpg", use_container_width=True)
+    else:
+        st.caption("Firma mancante (carica logo.jpg)")
