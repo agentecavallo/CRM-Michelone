@@ -13,10 +13,10 @@ def carica_dati():
     if os.path.exists(DB_FILE):
         return pd.read_csv(DB_FILE)
     else:
-        # Crea un database vuoto se non esiste
-        return pd.DataFrame(columns=["Data", "Agente", "Cliente", "Tipo", "Località", "Provincia", "Note", "FollowUp", "Lat", "Lon", "ID"])
+        # Crea le colonne se il file non esiste
+        return pd.DataFrame(columns=["Data", "Agente", "Cliente", "Tipo", "Località", "Provincia", "Note", "FollowUp", "ID"])
 
-def salva_visita_locale():
+def salva_visita():
     s = st.session_state
     if s.get('cliente_key', '').strip() != "" and s.get('note_key', '').strip() != "":
         df = carica_dati()
@@ -38,8 +38,6 @@ def salva_visita_locale():
             "Provincia": s.prov_key.upper(),
             "Note": s.note_key,
             "FollowUp": data_fup,
-            "Lat": s.get('lat_val', ''),
-            "Lon": s.get('lon_val', ''),
             "ID": str(uuid.uuid4())
         }
         
@@ -47,13 +45,16 @@ def salva_visita_locale():
         df.to_csv(DB_FILE, index=False)
         
         # Reset campi
-        s.cliente_key = ""; s.localita_key = ""; s.prov_key = ""; s.note_key = ""
-        st.toast("✅ Salvato in locale!")
+        st.session_state.cliente_key = ""
+        st.session_state.localita_key = ""
+        st.session_state.prov_key = ""
+        st.session_state.note_key = ""
+        st.toast("✅ Visita registrata con successo!")
         st.rerun()
     else:
-        st.error("⚠️ Compila Cliente e Note!")
+        st.error("⚠️ Inserisci Nome Cliente e Note!")
 
-def elimina_riga_locale(id_da_eliminare):
+def elimina_riga(id_da_eliminare):
     df = carica_dati()
     df = df[df['ID'].astype(str) != str(id_da_eliminare)]
     df.to_csv(DB_FILE, index=False)
@@ -62,78 +63,84 @@ def elimina_riga_locale(id_da_eliminare):
 # --- 2. INTERFACCIA ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="wide")
 
-# Logo e Titolo
+# Logo e Titolo (Come l'originale)
 col_logo, col_tit = st.columns([1, 6])
 with col_logo:
     st.image("https://cdn-icons-png.flaticon.com/512/2912/2912761.png", width=80)
 with col_tit:
-    st.title("CRM Michelone - Versione Locale")
+    st.title("CRM Michelone Cloud")
 
-# --- MODULO INSERIMENTO ---
+# --- SEZIONE INSERIMENTO ---
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=True):
-    c1, c2 = st.columns(2)
-    with c1:
+    col1, col2 = st.columns(2)
+    with col1:
         st.text_input("Nome Cliente", key="cliente_key")
         st.radio("Tipo", ["Cliente", "Potenziale"], key="tipo_key", horizontal=True)
-    with c2:
+    with col2:
         st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
-        st.date_input("Data", datetime.now(), key="data_key")
+        st.date_input("Data Visita", datetime.now(), key="data_key")
 
     st.markdown("---")
-    l1, l2, l3 = st.columns([3, 1, 2])
-    with l1: st.text_input("Località", key="localita_key")
-    with l2: st.text_input("Prov.", key="prov_key", max_chars=2)
-    with l3:
-        st.write(" ")
+    c_loc, c_prov, c_gps = st.columns([3, 1, 2])
+    with c_loc: st.text_input("Località", key="localita_key")
+    with c_prov: st.text_input("Prov.", key="prov_key", max_chars=2)
+    
+    with c_gps:
+        st.write(" ") # Allineamento
         loc = get_geolocation()
         if st.button("📍 POSIZIONE GPS", use_container_width=True):
             if loc:
                 lat = loc['coords']['latitude']
                 lon = loc['coords']['longitude']
-                st.session_state['lat_val'] = str(lat)
-                st.session_state['lon_val'] = str(lon)
                 try:
-                    r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}").json()
-                    citta = r.get('address', {}).get('city', r.get('address', {}).get('town', ''))
+                    res = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}").json()
+                    citta = res.get('address', {}).get('city', res.get('address', {}).get('town', ''))
                     st.session_state.localita_key = citta.upper()
-                except: pass
+                    st.toast("📍 Città individuata!")
+                except:
+                    st.toast("📍 GPS acquisito")
             else:
-                st.warning("Permesso GPS negato dal browser.")
+                st.error("Controlla i permessi GPS del browser")
 
-    st.text_area("Note", key="note_key", height=100)
-    st.radio("Pianifica Ricontatto", ["No", "7 gg", "30 gg"], key="fup_opt", horizontal=True)
-    st.button("💾 SALVA VISITA", on_click=salva_visita_locale, use_container_width=True, type="primary")
+    st.text_area("Note del colloquio", key="note_key", height=100)
+    st.write("📅 **Pianifica Ricontatto:**")
+    st.radio("Scadenza", ["No", "7 gg", "30 gg"], key="fup_opt", horizontal=True)
+    st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True, type="primary")
 
 st.divider()
 
-# --- RICERCA E VISUALIZZAZIONE ---
+# --- SEZIONE RICERCA E ARCHIVIO ---
 st.subheader("🔍 Ricerca nell'Archivio")
 df = carica_dati()
 
-f1, f2 = st.columns(2)
-with f1: cerca = st.text_input("Cerca nome o nota...")
-with f2: ag_filtro = st.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+f_col1, f_col2 = st.columns(2)
+with f_col1:
+    cerca = st.text_input("Cerca per nome o parola chiave...")
+with f_col2:
+    agente_scelto = st.selectbox("Filtra per Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
 if not df.empty:
+    # Applica i filtri
     df_filt = df.copy()
     if cerca:
         df_filt = df_filt[df_filt.astype(str).apply(lambda x: cerca.lower() in x.str.lower().any(), axis=1)]
-    if ag_filtro != "Tutti":
-        df_filt = df_filt[df_filt['Agente'] == ag_filtro]
+    if agente_scelto != "Tutti":
+        df_filt = df_filt[df_filt['Agente'] == agente_scelto]
 
     # Alert Scadenze
     oggi = datetime.now().strftime("%Y-%m-%d")
-    scadenze = df_filt[(df_filt['FollowUp'] != "") & (df_filt['FollowUp'] <= oggi)]
-    if not scadenze.empty:
-        st.error(f"⚠️ Hai {len(scadenze)} ricontatti da gestire!")
+    scaduti = df_filt[(df_filt['FollowUp'] != "") & (df_filt['FollowUp'] <= oggi)]
+    if not scaduti.empty:
+        st.error(f"⚠️ Hai {len(scaduti)} ricontatti scaduti o previsti per oggi!")
 
-    # Elenco Schede
+    # Elenco visite
     for i, row in df_filt.iloc[::-1].iterrows():
         with st.expander(f"{row['Data']} - {row['Cliente']} ({row['Località']})"):
             st.write(f"**Agente:** {row['Agente']} | **Tipo:** {row['Tipo']}")
             st.info(f"**Note:** {row['Note']}")
-            if row['FollowUp']: st.warning(f"📅 Follow-up: {row['FollowUp']}")
+            if row['FollowUp']:
+                st.warning(f"📅 Scadenza ricontatto: {row['FollowUp']}")
             if st.button("🗑️ Elimina", key=f"del_{row['ID']}"):
-                elimina_riga_locale(row['ID'])
+                elimina_riga(row['ID'])
 else:
-    st.info("Archivio vuoto.")
+    st.info("Archivio vuoto. Registra la prima visita sopra.")
