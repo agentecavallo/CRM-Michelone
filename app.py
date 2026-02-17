@@ -129,6 +129,7 @@ def salva_visita():
                        s.lat_val, s.lon_val))
             conn.commit()
         
+        # Reset dei campi
         st.session_state.cliente_key = ""
         st.session_state.localita_key = ""
         st.session_state.prov_key = ""
@@ -138,8 +139,7 @@ def salva_visita():
         st.session_state.fup_opt = "No"
         
         st.toast("✅ Visita salvata!", icon="💾")
-        time.sleep(1)
-        st.rerun()
+        # Rimosso st.rerun() per evitare l'errore giallo nel callback
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
 
@@ -321,9 +321,8 @@ if st.session_state.ricerca_attiva:
                             st.write(f"📅 **Ricontatto:** {data_fup_it}")
                         except: pass
 
-                    # --- FIX MAPPA ---
                     if row['latitudine'] and row['longitudine']:
-                        st.markdown(f"[📍 Mappa](https://www.google.com/maps?q={row['latitudine']},{row['longitudine']})")
+                        st.markdown(f"[📍 Mappa](http://www.google.com/maps/place/{row['latitudine']},{row['longitudine']})")
                     
                     cb_m, cb_d = st.columns([1, 1])
                     if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
@@ -379,7 +378,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
             except Exception as e:
                 st.error(f"Errore: {e}")
 
-# --- LOGO FINALE ---
+# --- LOGO FINALE 'MICHELONE APPROVED' ---
 st.write("") 
 st.divider() 
 
