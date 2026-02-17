@@ -79,6 +79,7 @@ def controllo_backup_automatico():
     if files:
         percorsi_completi = [os.path.join(cartella_backup, f) for f in files]
         file_piu_recente = max(percorsi_completi, key=os.path.getctime)
+        # Backup ogni 7 giorni
         if datetime.now() - datetime.fromtimestamp(os.path.getctime(file_piu_recente)) > timedelta(days=7):
             fare_backup = True
             
@@ -244,13 +245,13 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# MODIFICA: Aggiunta 5° colonna per filtro CRM
+# FILTRI DI RICERCA
 f1, f2, f3, f4, f5 = st.columns([1.5, 1, 1, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
-# Nuovo Filtro
+# Nuovo Filtro per Stato CRM
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
@@ -261,6 +262,7 @@ if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
+    # APPLICAZIONE FILTRI
     if t_ricerca:
         df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
     if f_agente != "Tutti":
@@ -268,9 +270,9 @@ if st.session_state.ricerca_attiva:
     if f_tipo != "Tutti":
         df = df[df['tipo_cliente'] == f_tipo]
     
-    # MODIFICA: Logica filtro CRM
+    # Logica filtro CRM
     if f_stato_crm == "Da Caricare":
-        # Filtra dove copiato_crm è 0 oppure NULL (per vecchi record)
+        # Filtra dove copiato_crm è 0 oppure NULL
         df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
     elif f_stato_crm == "Caricati":
         df = df[df['copiato_crm'] == 1]
@@ -290,6 +292,8 @@ if st.session_state.ricerca_attiva:
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
             
             with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}"):
+                
+                # --- MODALITÀ MODIFICA ---
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
@@ -326,6 +330,8 @@ if st.session_state.ricerca_attiva:
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
                         st.session_state.edit_mode_id = None
                         st.rerun()
+                
+                # --- MODALITÀ VISUALIZZAZIONE ---
                 else:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
@@ -385,7 +391,7 @@ if st.session_state.ricerca_attiva:
     else:
         st.warning("Nessun risultato trovato.")
 
-# --- GESTIONE DATI ---
+# --- GESTIONE DATI E RIPRISTINO SICURO ---
 st.divider()
 with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -399,22 +405,46 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI**")
+    st.caption("Carica un backup Excel. ATTENZIONE: i dati attuali verranno sostituiti!")
     file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
     
     if file_caricato is not None:
         if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
             try:
+                # Legge il file excel
                 df_ripristino = pd.read_excel(file_caricato)
+                
+                # Verifica che sia un file valido (deve avere la colonna cliente)
                 if 'cliente' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
-                        df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
-                    st.success("✅ Database ripristinato! Riavvio in corso...")
+                        c = conn.cursor()
+                        
+                        # 1. CANCELLAZIONE TOTALE TABELLA ESISTENTE
+                        c.execute("DROP TABLE IF EXISTS visite")
+                        conn.commit()
+                        
+                        # 2. RICREAZIONE TABELLA PULITA (Con ID AutoIncrement)
+                        # Ricreo la struttura identica a quella iniziale, inclusa la colonna copiato_crm
+                        c.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                      cliente TEXT, localita TEXT, provincia TEXT,
+                                      tipo_cliente TEXT, data TEXT, note TEXT,
+                                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0)''')
+                        conn.commit()
+                        
+                        # 3. INSERIMENTO DATI (Mantenendo gli ID originali)
+                        # 'append' inserirà i dati. Poiché nel file excel c'è la colonna 'id',
+                        # SQLite userà quei numeri. Il contatore interno si aggiornerà automaticamente.
+                        df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                        
+                    st.success("✅ Database ripristinato correttamente! Riavvio...")
                     time.sleep(2)
                     st.rerun()
                 else:
                     st.error("❌ Il file non sembra un backup valido del CRM.")
             except Exception as e:
-                st.error(f"Errore: {e}")
+                st.error(f"Errore durante il ripristino: {e}")
 
 # --- LOGO FINALE ---
 st.write("") 
