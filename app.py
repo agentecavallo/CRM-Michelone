@@ -33,31 +33,32 @@ inizializza_db()
 
 # --- FUNZIONE JAVASCRIPT PER COPIARE ---
 def copia_negli_appunti(testo, id_bottone):
+    # Pulizia testo per JavaScript
+    testo_safe = testo.replace("`", "'").replace("\n", " ")
     html_code = f"""
     <button id="btn_{id_bottone}" style="
         background-color: #f0f2f6; 
         border: 1px solid #dcdfe3; 
-        border-radius: 5px; 
-        padding: 5px 10px; 
+        border-radius: 8px; 
+        padding: 8px; 
         cursor: pointer;
         width: 100%;
         font-weight: bold;
         color: #31333F;">
         📋 COPIA NOTE
     </button>
-
     <script>
     document.getElementById("btn_{id_bottone}").onclick = function() {{
-        const text = `{testo}`;
+        const text = `{testo_safe}`;
         navigator.clipboard.writeText(text).then(function() {{
-            alert("Note copiate negli appunti!");
+            alert("Note copiate!");
         }}, function(err) {{
-            console.error('Errore nel copia:', err);
+            console.error('Errore:', err);
         }});
     }};
     </script>
     """
-    components.html(html_code, height=45)
+    components.html(html_code, height=50)
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 
@@ -129,7 +130,6 @@ def salva_visita():
                        s.lat_val, s.lon_val))
             conn.commit()
         
-        # Reset dei campi
         st.session_state.cliente_key = ""
         st.session_state.localita_key = ""
         st.session_state.prov_key = ""
@@ -137,25 +137,28 @@ def salva_visita():
         st.session_state.lat_val = ""
         st.session_state.lon_val = ""
         st.session_state.fup_opt = "No"
-        
-        st.toast("✅ Visita salvata!", icon="💾")
-        # Rimosso st.rerun() per evitare l'errore giallo nel callback
+        st.toast("✅ Visita salvata con successo!", icon="💾")
     else:
-        st.error("⚠️ Inserisci almeno Cliente e Note!")
+        st.error("⚠️ Errore: Inserisci almeno Nome Cliente e Note!")
 
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
-with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
-    st.text_input("Nome Cliente", key="cliente_key")
-    st.selectbox("Tipo Cliente", ["Prospect", "Cliente"], key="tipo_key")
+with st.expander("➕ REGISTRA NUOVA VISITA", expanded=not st.session_state.ricerca_attiva): 
+    st.text_input("Nome Cliente", key="cliente_key", placeholder="Es: Mario Rossi Srl")
+    
+    # MODIFICA: Radio button al posto della selectbox per velocità mobile
+    st.radio("Tipo Cliente", ["Prospect", "Cliente"], 
+             key="tipo_key", 
+             horizontal=True, 
+             format_func=lambda x: "🚀 Prospect" if x == "Prospect" else "🤝 Cliente")
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
     loc_data = get_geolocation()
-    if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
+    if st.button("📍 USA POSIZIONE ATTUALE", use_container_width=True):
         if loc_data and 'coords' in loc_data:
             try:
                 lat, lon = loc_data['coords']['latitude'], loc_data['coords']['longitude']
@@ -171,14 +174,14 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
                     prov_sigla = prov_full[:2].upper() if prov_full else "??"
                 
                 st.session_state['gps_temp'] = {'citta': citta.upper() if citta else "", 'prov': prov_sigla, 'lat': str(lat), 'lon': str(lon)}
-            except: st.warning("Impossibile recuperare i dettagli dell'indirizzo.")
-        else: st.warning("⚠️ Consenti la geolocalizzazione nel browser.")
+            except: st.warning("Errore nel recupero indirizzo. GPS attivo?")
+        else: st.warning("⚠️ Attiva il GPS sul telefono.")
 
     if 'gps_temp' in st.session_state:
         d = st.session_state['gps_temp']
-        st.info(f"🛰️ Trovato: **{d['citta']} ({d['prov']})**")
+        st.info(f"🛰️ Rilevato: **{d['citta']} ({d['prov']})**")
         c_yes, c_no = st.columns(2)
-        with c_yes: st.button("✅ INSERISCI", on_click=applica_dati_gps, use_container_width=True)
+        with c_yes: st.button("✅ CONFERMA", on_click=applica_dati_gps, use_container_width=True)
         with c_no: 
             if st.button("❌ ANNULLA", use_container_width=True): 
                 del st.session_state['gps_temp']
@@ -186,13 +189,13 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
 
     st.markdown("---")
     c1, c2 = st.columns(2)
-    with c1: st.date_input("Data", datetime.now(), key="data_key")
-    with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
+    with c1: st.date_input("Data Visita", datetime.now(), key="data_key")
+    with c2: st.selectbox("Tuo Nome (Agente)", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    st.text_area("Note", key="note_key", height=150)
-    st.write("📅 **Pianifica Ricontatto:**")
+    st.text_area("Cosa vi siete detti? (Note)", key="note_key", height=150)
+    st.write("📅 **Pianifica un ricontatto tra:**")
     st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed")
-    st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
+    st.button("💾 SALVA VISITA NEL CRM", on_click=salva_visita, use_container_width=True, type="primary")
 
 st.divider()
 
@@ -202,47 +205,38 @@ with sqlite3.connect('crm_mobile.db') as conn:
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
 
 if not df_scadenze.empty:
-    st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
+    st.error(f"⚠️ **{len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
-        try:
-            d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
-            d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
-            giorni_ritardo = (d_oggi - d_scad).days
-            msg_scadenza = "Scade OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
-        except: msg_scadenza = "Scaduto"
-
         with st.container(border=True):
-            tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
-            st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
-            st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
-            c1, c2, c3 = st.columns([1, 1, 1])
+            tipo_icon = "🚀" if row['tipo_cliente'] == "Prospect" else "🤝"
+            st.markdown(f"**{tipo_icon} {row['cliente']}** - {row['localita']}")
+            st.caption(f"Note prec: {row['note']}")
+            c1, c2, c3 = st.columns(3)
             with c1:
-                if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
-                    nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+                if st.button("+1 gg", key=f"p1_{row['id']}", use_container_width=True):
+                    nuova = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
+                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova, row['id']))
                     st.rerun()
             with c2:
-                if st.button("+7 📅", key=f"p7_{row['id']}", use_container_width=True):
-                    nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+                if st.button("+7 gg", key=f"p7_{row['id']}", use_container_width=True):
+                    nuova = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
                     with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
+                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova, row['id']))
                     st.rerun()
             with c3:
-                if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
+                if st.button("Fatto ✅", key=f"ok_{row['id']}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
 
 # --- RICERCA E ARCHIVIO ---
-st.subheader("🔍 Archivio Visite")
-f1, f2, f3, f4 = st.columns([1.5, 1, 1, 1])
+st.subheader("🔍 Ricerca Visite")
+f1, f2 = st.columns([2, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
-periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
-f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
+f_agente = f2.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-if st.button("🔎 CERCA VISITE", use_container_width=True):
+if st.button("🔎 AVVIA RICERCA", use_container_width=True):
     st.session_state.ricerca_attiva = True
     st.session_state.edit_mode_id = None 
 
@@ -254,102 +248,66 @@ if st.session_state.ricerca_attiva:
         df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
     if f_agente != "Tutti":
         df = df[df['agente'] == f_agente]
-    if f_tipo != "Tutti":
-        df = df[df['tipo_cliente'] == f_tipo]
-    if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-         df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
 
     if not df.empty:
         st.success(f"Trovate {len(df)} visite.")
-        if st.button("❌ Chiudi Ricerca"):
+        if st.button("❌ CHIUDI RICERCA"):
             st.session_state.ricerca_attiva = False
             st.rerun()
 
         for _, row in df.iterrows():
-            badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
-            with st.expander(f"{row['data']} - {row['cliente']} {badge_tipo}"):
+            label_titolo = f"{row['data']} - {row['cliente']}"
+            with st.expander(label_titolo):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
                     
-                    lista_tp = ["Prospect", "Cliente"]
-                    try: idx_tp = lista_tp.index(row['tipo_cliente'])
-                    except: idx_tp = 0
-                    new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
+                    # Anche qui selettore rapido 
+                    new_tipo = st.radio("Stato", ["Prospect", "Cliente"], 
+                                      index=0 if row['tipo_cliente'] == "Prospect" else 1,
+                                      horizontal=True,
+                                      format_func=lambda x: "🚀 Prospect" if x == "Prospect" else "🤝 Cliente",
+                                      key=f"e_tp_{row['id']}")
 
-                    lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
-                    try: idx_ag = lista_agenti.index(row['agente'])
-                    except: idx_ag = 0
-                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
-                    
                     new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
-                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
                     
-                    fup_attuale = row['data_followup']
-                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
-                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
-                    new_fup = ""
-                    if attiva_fup:
-                        new_fup_dt = st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row['id']}")
-                        new_fup = new_fup_dt.strftime("%Y-%m-%d")
-
                     cs, cc = st.columns(2)
-                    if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
+                    if cs.button("💾 AGGIORNA", key=f"save_{row['id']}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=? WHERE id=?""",
-                                         (new_cliente, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, row['id']))
+                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, note=? WHERE id=?""",
+                                         (new_cliente, new_tipo, new_loc.upper(), new_note, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
-                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
-                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
+                    icona = "🚀" if row['tipo_cliente'] == "Prospect" else "🤝"
+                    st.write(f"**Stato:** {icona} {row['tipo_cliente']} | **Agente:** {row['agente']}")
+                    st.write(f"📍 **Dove:** {row['localita']} ({row['provincia']})")
                     
-                    st.write("**Note:**")
-                    col_note, col_copia = st.columns([2, 1])
-                    with col_note:
-                        st.info(row['note'])
-                    with col_copia:
-                        copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
+                    st.info(row['note'])
+                    copia_negli_appunti(row['note'], row['id'])
                     
-                    if row['data_followup']:
-                        try:
-                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
-                            st.write(f"📅 **Ricontatto:** {data_fup_it}")
-                        except: pass
-
-                    if row['latitudine'] and row['longitudine']:
-                        st.markdown(f"[📍 Mappa](http://www.google.com/maps/place/{row['latitudine']},{row['longitudine']})")
+                    if row['latitudine']:
+                        map_link = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
+                        st.markdown(f"[📍 Apri Navigatore Google Maps]({map_link})")
                     
-                    cb_m, cb_d = st.columns([1, 1])
-                    if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
+                    c_mod, c_del = st.columns(2)
+                    if c_mod.button("✏️ Modifica", key=f"btn_mod_{row['id']}", use_container_width=True):
                         st.session_state.edit_mode_id = row['id']
                         st.rerun()
-                    
-                    key_conf = f"confirm_del_{row['id']}"
-                    if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
-                        st.session_state[key_conf] = True
+                    if c_del.button("🗑️ Elimina", key=f"btn_del_{row['id']}", use_container_width=True):
+                        with sqlite3.connect('crm_mobile.db') as conn:
+                            conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
                         st.rerun()
-                    
-                    if st.session_state.get(key_conf, False):
-                        st.warning("⚠️ Sicuro?")
-                        cy, cn = st.columns(2)
-                        if cy.button("SÌ", key=f"yes_{row['id']}", type="primary"):
-                            with sqlite3.connect('crm_mobile.db') as conn:
-                                conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                            st.rerun()
-                        if cn.button("NO", key=f"no_{row['id']}"):
-                            del st.session_state[key_conf]
-                            st.rerun()
     else:
-        st.warning("Nessun risultato trovato.")
+        st.warning("Nessun risultato.")
 
 # --- GESTIONE DATI ---
 st.divider()
-with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
+with st.expander("🛠️ AMMINISTRAZIONE"):
     with sqlite3.connect('crm_mobile.db') as conn:
         df_full = pd.read_sql_query("SELECT * FROM visite", conn)
     
@@ -357,26 +315,17 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_full.to_excel(writer, index=False)
     
-    st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
+    st.download_button("📥 SCARICA TUTTO IN EXCEL", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
     
     st.markdown("---")
-    st.write("📤 **RIPRISTINO DATI**")
-    file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
-    
-    if file_caricato is not None:
-        if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
-            try:
-                df_ripristino = pd.read_excel(file_caricato)
-                if 'cliente' in df_ripristino.columns:
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
-                    st.success("✅ Database ripristinato! Riavvio in corso...")
-                    time.sleep(2)
-                    st.rerun()
-                else:
-                    st.error("❌ Il file non sembra un backup valido del CRM.")
-            except Exception as e:
-                st.error(f"Errore: {e}")
+    file_caricato = st.file_uploader("Ripristina da Excel", type=["xlsx"])
+    if file_caricato and st.button("⚠️ SOVRASCRIVI DATABASE", type="primary"):
+        df_ripristino = pd.read_excel(file_caricato)
+        with sqlite3.connect('crm_mobile.db') as conn:
+            df_ripristino.to_sql('visite', conn, if_exists='replace', index=False)
+        st.success("✅ Fatto! Ricarica la pagina.")
+
+st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em;'>CRM MICHELONE APPROVED ✅</p>", unsafe_allow_html=True)
 
 # --- LOGO FINALE 'MICHELONE APPROVED' ---
 st.write("") 
@@ -386,7 +335,13 @@ col_f1, col_f2, col_f3 = st.columns([1, 2, 1])
 
 with col_f2:
     try:
+        # Carica il logo se presente nella cartella
         st.image("logo.jpg", use_container_width=True)
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
-        st.info("✅ Michelone Approved")
+        # Se il file logo.jpg manca, mostra un badge testuale carino
+        st.markdown("""
+            <div style='text-align: center; border: 2px solid #4CAF50; border-radius: 10px; padding: 10px;'>
+                <span style='color: #4CAF50; font-weight: bold; font-size: 1.2em;'>✅ MICHELONE APPROVED</span>
+            </div>
+        """, unsafe_allow_html=True)
