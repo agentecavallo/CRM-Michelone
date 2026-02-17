@@ -27,6 +27,14 @@ def inizializza_db():
                       tipo_cliente TEXT, data TEXT, note TEXT,
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                       latitudine TEXT, longitudine TEXT)''')
+        
+        # --- AGGIUNTA COLONNA PER CHECKBOX CRM (Migrazione Automatica) ---
+        try:
+            c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
+        except:
+            # Se la colonna esiste già, ignora l'errore
+            pass
+            
         conn.commit()
 
 inizializza_db()
@@ -121,9 +129,10 @@ def salva_visita():
             if giorni_da_aggiungere > 0:
                 data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
             
+            # Nota: copiato_crm di default è 0 (Falso)
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
-                         data_followup, data_ordine, agente, latitudine, longitudine) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", 
+                         data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""", 
                       (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo, 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
                        s.lat_val, s.lon_val))
@@ -265,8 +274,11 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
+            # Icona verde se salvato su CRM
+            icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
-            with st.expander(f"{row['data']} - {row['cliente']} {badge_tipo}"):
+            
+            with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}"):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
@@ -312,7 +324,25 @@ if st.session_state.ricerca_attiva:
                     with col_note:
                         st.info(row['note'])
                     with col_copia:
+                        # Tasto Copia
                         copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
+                        
+                        st.write("") # Spaziatura
+                        
+                        # --- NUOVO: Checkbox Salvato su CRM ---
+                        # Controlla se il valore è 1 (True) o 0/None (False)
+                        is_copied = True if row.get('copiato_crm') == 1 else False
+                        
+                        # Checkbox interattiva
+                        check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
+                        
+                        # Se l'utente cambia lo stato, aggiorna subito il DB
+                        if check_val != is_copied:
+                            nuovo_val = 1 if check_val else 0
+                            with sqlite3.connect('crm_mobile.db') as conn:
+                                conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
+                            st.rerun()
+
                     
                     if row['data_followup']:
                         try:
