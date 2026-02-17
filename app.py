@@ -154,7 +154,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
-    # --- RIPRISTINO GPS ORIGINALE ---
     loc_data = get_geolocation()
     if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -184,7 +183,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
             if st.button("❌ ANNULLA", use_container_width=True): 
                 del st.session_state['gps_temp']
                 st.rerun()
-    # --------------------------------
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -288,7 +286,6 @@ if st.session_state.ricerca_attiva:
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
                     
-                    # Modifica Data Follow-up
                     fup_attuale = row['data_followup']
                     val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
                     attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
@@ -324,8 +321,9 @@ if st.session_state.ricerca_attiva:
                             st.write(f"📅 **Ricontatto:** {data_fup_it}")
                         except: pass
 
+                    # --- FIX MAPPA ---
                     if row['latitudine'] and row['longitudine']:
-                        st.markdown(f"[📍 Mappa](http://googleusercontent.com/maps.google.com/maps?q={row['latitudine']},{row['longitudine']})")
+                        st.markdown(f"[📍 Mappa](https://www.google.com/maps?q={row['latitudine']},{row['longitudine']})")
                     
                     cb_m, cb_d = st.columns([1, 1])
                     if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
@@ -381,7 +379,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
             except Exception as e:
                 st.error(f"Errore: {e}")
 
-# --- LOGO FINALE 'MICHELONE APPROVED' ---
+# --- LOGO FINALE ---
 st.write("") 
 st.divider() 
 
