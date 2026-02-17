@@ -32,8 +32,7 @@ def inizializza_db():
         try:
             c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
         except:
-            # Se la colonna esiste già, ignora l'errore
-            pass
+            pass # Se la colonna esiste già, ignora l'errore
             
         conn.commit()
 
@@ -244,11 +243,15 @@ if not df_scadenze.empty:
 
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
-f1, f2, f3, f4 = st.columns([1.5, 1, 1, 1])
+
+# MODIFICA: Aggiunta 5° colonna per filtro CRM
+f1, f2, f3, f4, f5 = st.columns([1.5, 1, 1, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
+# Nuovo Filtro
+f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -264,6 +267,14 @@ if st.session_state.ricerca_attiva:
         df = df[df['agente'] == f_agente]
     if f_tipo != "Tutti":
         df = df[df['tipo_cliente'] == f_tipo]
+    
+    # MODIFICA: Logica filtro CRM
+    if f_stato_crm == "Da Caricare":
+        # Filtra dove copiato_crm è 0 oppure NULL (per vecchi record)
+        df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
+    elif f_stato_crm == "Caricati":
+        df = df[df['copiato_crm'] == 1]
+
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
 
@@ -329,21 +340,18 @@ if st.session_state.ricerca_attiva:
                         
                         st.write("") # Spaziatura
                         
-                        # --- NUOVO: Checkbox Salvato su CRM ---
-                        # Controlla se il valore è 1 (True) o 0/None (False)
+                        # Checkbox Salvato su CRM
                         is_copied = True if row.get('copiato_crm') == 1 else False
                         
                         # Checkbox interattiva
                         check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
                         
-                        # Se l'utente cambia lo stato, aggiorna subito il DB
                         if check_val != is_copied:
                             nuovo_val = 1 if check_val else 0
                             with sqlite3.connect('crm_mobile.db') as conn:
                                 conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
                             st.rerun()
 
-                    
                     if row['data_followup']:
                         try:
                             data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
