@@ -264,19 +264,32 @@ if st.session_state.ricerca_attiva:
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
                     new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
+                    
                     new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
                     
+                    # --- GESTIONE DATA FOLLOW UP IN MODIFICA ---
+                    fup_attuale = row['data_followup']
+                    valore_iniziale = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
+                    
+                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"check_fup_{row['id']}")
+                    new_fup = ""
+                    if attiva_fup:
+                        new_fup_date = st.date_input("Data Ricontatto", value=valore_iniziale, key=f"e_fup_{row['id']}")
+                        new_fup = new_fup_date.strftime("%Y-%m-%d")
+                    # -------------------------------------------
+                    
                     cs, cc = st.columns(2)
                     if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=? WHERE id=?""",
-                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, row['id']))
+                            conn.execute("""UPDATE visite SET cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=? WHERE id=?""",
+                                         (new_cliente, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
@@ -359,14 +372,11 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
 st.write("") 
 st.divider() 
 
-# Creiamo tre colonne per centrare bene l'immagine
 col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
 
 with col_f2:
     try:
-        # Carichiamo il logo.jpg (Assicurati che sia nella stessa cartella del file .py)
         st.image("logo.jpg", use_container_width=True)
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
-        # Messaggio se l'immagine manca
         st.info("✅ Michelone Approved")
