@@ -147,7 +147,7 @@ st.title("💼 CRM Michelone")
 
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
-    st.selectbox("Tipo Cliente", ["Prospect", "Cliente"], key="tipo_key")
+    st.selectbox("Tipo Cliente", ["Cliente", "Prospect"], key="tipo_key")
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
@@ -390,3 +390,4 @@ with col_f2:
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.info("✅ Michelone Approved")
+
