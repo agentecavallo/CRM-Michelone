@@ -154,6 +154,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
+    # --- RIPRISTINO GPS ORIGINALE ---
     loc_data = get_geolocation()
     if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -183,6 +184,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
             if st.button("❌ ANNULLA", use_container_width=True): 
                 del st.session_state['gps_temp']
                 st.rerun()
+    # --------------------------------
 
     st.markdown("---")
     c1, c2 = st.columns(2)
@@ -212,7 +214,8 @@ if not df_scadenze.empty:
         except: msg_scadenza = "Scaduto"
 
         with st.container(border=True):
-            st.markdown(f"**{row['cliente']}** ({row['tipo_cliente']}) - {row['localita']}")
+            tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
+            st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
@@ -239,7 +242,7 @@ f1, f2, f3, f4 = st.columns([1.5, 1, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-f_tipo = f4.selectbox("Tipo Cliente", ["Tutti", "Prospect", "Cliente"])
+f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -266,15 +269,15 @@ if st.session_state.ricerca_attiva:
 
         for _, row in df.iterrows():
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
-            with st.expander(f"{row['data']} - {row['cliente']} {badge_tipo} ({row['agente']})"):
+            with st.expander(f"{row['data']} - {row['cliente']} {badge_tipo}"):
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
                     
-                    lista_tipi = ["Prospect", "Cliente"]
-                    try: idx_tp = lista_tipi.index(row['tipo_cliente'])
+                    lista_tp = ["Prospect", "Cliente"]
+                    try: idx_tp = lista_tp.index(row['tipo_cliente'])
                     except: idx_tp = 0
-                    new_tipo = st.selectbox("Stato", lista_tipi, index=idx_tp, key=f"e_tp_{row['id']}")
+                    new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
 
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
@@ -285,13 +288,13 @@ if st.session_state.ricerca_attiva:
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     new_note = st.text_area("Note", value=row['note'], height=100, key=f"e_note_{row['id']}")
                     
-                    # Gestione data follow up in modifica
+                    # Modifica Data Follow-up
                     fup_attuale = row['data_followup']
-                    val_fup = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
+                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
                     attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
                     new_fup = ""
                     if attiva_fup:
-                        new_fup_dt = st.date_input("Data Ricontatto", val_fup, key=f"e_dt_{row['id']}")
+                        new_fup_dt = st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row['id']}")
                         new_fup = new_fup_dt.strftime("%Y-%m-%d")
 
                     cs, cc = st.columns(2)
@@ -305,7 +308,9 @@ if st.session_state.ricerca_attiva:
                         st.session_state.edit_mode_id = None
                         st.rerun()
                 else:
-                    st.write(f"**Stato:** {row['tipo_cliente']} | **Località:** {row['localita']} ({row['provincia']})")
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
+                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
+                    
                     st.write("**Note:**")
                     col_note, col_copia = st.columns([2, 1])
                     with col_note:
