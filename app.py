@@ -38,6 +38,14 @@ def inizializza_db():
 
 inizializza_db()
 
+# --- FUNZIONE CALCOLO GIORNI ---
+def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
+    # 0 = Lunedì, 4 = Venerdì
+    giorni_mancanti = giorno_obiettivo - data_partenza.weekday()
+    if giorni_mancanti <= 0:
+        giorni_mancanti += 7
+    return (data_partenza + timedelta(days=giorni_mancanti)).strftime("%Y-%m-%d")
+
 # --- FUNZIONE JAVASCRIPT PER COPIARE ---
 def copia_negli_appunti(testo, id_bottone):
     html_code = f"""
@@ -119,16 +127,15 @@ def salva_visita():
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             
-            giorni_da_aggiungere = 0
-            if scelta == "1 gg": giorni_da_aggiungere = 1
-            elif scelta == "7 gg": giorni_da_aggiungere = 7
-            elif scelta == "15 gg": giorni_da_aggiungere = 15
-            elif scelta == "30 gg": giorni_da_aggiungere = 30
+            # Gestione delle nuove opzioni di data
+            if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
+                giorni = int(scelta.split()[0])
+                data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
+            elif scelta == "Prox. Lunedì":
+                data_fup = calcola_prossimo_giorno(s.data_key, 0)
+            elif scelta == "Prox. Venerdì":
+                data_fup = calcola_prossimo_giorno(s.data_key, 4)
             
-            if giorni_da_aggiungere > 0:
-                data_fup = (s.data_key + timedelta(days=giorni_da_aggiungere)).strftime("%Y-%m-%d")
-            
-            # Nota: copiato_crm di default è 0 (Falso)
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                          data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""", 
@@ -198,7 +205,8 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.text_area("Note", key="note_key", height=150)
     st.write("📅 **Pianifica Ricontatto:**")
-    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+    # Aggiunte le nuove opzioni qui, il menù a radio andrà a capo da solo se serve
+    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
@@ -222,6 +230,8 @@ if not df_scadenze.empty:
             tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
             st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
+            
+            # Riga 1 dei bottoni (i classici)
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
                 if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
@@ -239,6 +249,21 @@ if not df_scadenze.empty:
                 if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
+                    st.rerun()
+                    
+            # Riga 2 dei bottoni (I nuovi bottoni settimanali, su una riga separata)
+            c4, c5 = st.columns(2)
+            with c4:
+                if st.button("➡️ Prox. Lunedì", key=f"pl_{row['id']}", use_container_width=True):
+                    nuova_data = calcola_prossimo_giorno(datetime.now(), 0) # 0 = Lunedì
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
+                    st.rerun()
+            with c5:
+                if st.button("➡️ Prox. Venerdì", key=f"pv_{row['id']}", use_container_width=True):
+                    nuova_data = calcola_prossimo_giorno(datetime.now(), 4) # 4 = Venerdì
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
 
 # --- RICERCA E ARCHIVIO ---
@@ -427,7 +452,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
             except Exception as e:
                 st.error(f"Errore durante il ripristino: {e}")
                 
-    # --- NUOVA SEZIONE: DOWNLOAD BACKUP AUTOMATICI DAL SERVER ---
+    # --- DOWNLOAD BACKUP AUTOMATICI DAL SERVER ---
     st.markdown("---")
     st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
     
