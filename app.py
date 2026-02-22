@@ -67,7 +67,6 @@ def copia_negli_appunti(testo, id_bottone):
     components.html(html_code, height=45)
 
 # --- 2. FUNZIONI DI SUPPORTO ---
-
 def controllo_backup_automatico():
     cartella_backup = "BACKUPS_AUTOMATICI"
     if not os.path.exists(cartella_backup):
@@ -251,7 +250,6 @@ t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
-# Nuovo Filtro per Stato CRM
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
@@ -272,7 +270,6 @@ if st.session_state.ricerca_attiva:
     
     # Logica filtro CRM
     if f_stato_crm == "Da Caricare":
-        # Filtra dove copiato_crm è 0 oppure NULL
         df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
     elif f_stato_crm == "Caricati":
         df = df[df['copiato_crm'] == 1]
@@ -287,7 +284,6 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            # Icona verde se salvato su CRM
             icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
             
@@ -341,15 +337,10 @@ if st.session_state.ricerca_attiva:
                     with col_note:
                         st.info(row['note'])
                     with col_copia:
-                        # Tasto Copia
                         copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
+                        st.write("") 
                         
-                        st.write("") # Spaziatura
-                        
-                        # Checkbox Salvato su CRM
                         is_copied = True if row.get('copiato_crm') == 1 else False
-                        
-                        # Checkbox interattiva
                         check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
                         
                         if check_val != is_copied:
@@ -411,20 +402,13 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     if file_caricato is not None:
         if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
             try:
-                # Legge il file excel
                 df_ripristino = pd.read_excel(file_caricato)
-                
-                # Verifica che sia un file valido (deve avere la colonna cliente)
                 if 'cliente' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
                         c = conn.cursor()
-                        
-                        # 1. CANCELLAZIONE TOTALE TABELLA ESISTENTE
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
                         
-                        # 2. RICREAZIONE TABELLA PULITA (Con ID AutoIncrement)
-                        # Ricreo la struttura identica a quella iniziale, inclusa la colonna copiato_crm
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -433,9 +417,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0)''')
                         conn.commit()
                         
-                        # 3. INSERIMENTO DATI (Mantenendo gli ID originali)
-                        # 'append' inserirà i dati. Poiché nel file excel c'è la colonna 'id',
-                        # SQLite userà quei numeri. Il contatore interno si aggiornerà automaticamente.
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
                         
                     st.success("✅ Database ripristinato correttamente! Riavvio...")
@@ -445,6 +426,30 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                     st.error("❌ Il file non sembra un backup valido del CRM.")
             except Exception as e:
                 st.error(f"Errore durante il ripristino: {e}")
+                
+    # --- NUOVA SEZIONE: DOWNLOAD BACKUP AUTOMATICI DAL SERVER ---
+    st.markdown("---")
+    st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
+    
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    if os.path.exists(cartella_backup):
+        files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
+        if files_backup:
+            files_backup.sort(reverse=True)
+            file_selezionato = st.selectbox("Seleziona un backup automatico:", files_backup)
+            
+            with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
+                st.download_button(
+                    label=f"⬇️ SCARICA {file_selezionato}",
+                    data=f,
+                    file_name=file_selezionato,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Nessun backup automatico generato finora (il primo avverrà tra 7 giorni).")
+    else:
+        st.info("La cartella dei backup automatici verrà creata al primo salvataggio.")
 
 # --- LOGO FINALE ---
 st.write("") 
