@@ -25,13 +25,18 @@ def inizializza_db():
                       cliente TEXT, localita TEXT, provincia TEXT,
                       tipo_cliente TEXT, data TEXT, note TEXT,
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
-                      latitudine TEXT, longitudine TEXT)''')
+                      latitudine TEXT, longitudine TEXT,
+                      referente TEXT, telefono TEXT)''')
         
-        # --- AGGIUNTA COLONNA PER CHECKBOX CRM (Migrazione Automatica) ---
-        try:
-            c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
-        except:
-            pass # Se la colonna esiste già, ignora l'errore
+        # --- MIGRAZIONI AUTOMATICHE PER VECCHI DATABASE ---
+        try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
+        except: pass 
+        
+        try: c.execute("ALTER TABLE visite ADD COLUMN referente TEXT DEFAULT ''")
+        except: pass
+        
+        try: c.execute("ALTER TABLE visite ADD COLUMN telefono TEXT DEFAULT ''")
+        except: pass
             
         conn.commit()
 
@@ -98,6 +103,8 @@ def salva_visita():
     cliente = s.get('cliente_key', '').strip()
     note = s.get('note_key', '').strip()
     tipo = s.get('tipo_key', 'Prospect')
+    referente = s.get('referente_key', '').strip()
+    telefono = s.get('telefono_key', '').strip()
     
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
@@ -108,7 +115,6 @@ def salva_visita():
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             
-            # Gestione delle nuove opzioni di data
             if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 giorni = int(scelta.split()[0])
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
@@ -118,11 +124,12 @@ def salva_visita():
                 data_fup = calcola_prossimo_giorno(s.data_key, 4)
             
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
-                         data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""", 
+                         data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
+                         referente, telefono) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""", 
                       (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo, 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
-                       s.lat_val, s.lon_val))
+                       s.lat_val, s.lon_val, referente, telefono))
             conn.commit()
         
         # Reset dei campi
@@ -132,6 +139,8 @@ def salva_visita():
         st.session_state.note_key = ""
         st.session_state.lat_val = ""
         st.session_state.lon_val = ""
+        st.session_state.referente_key = ""
+        st.session_state.telefono_key = ""
         st.session_state.fup_opt = "No"
         
         st.toast("✅ Visita salvata!", icon="💾")
@@ -144,6 +153,11 @@ st.title("💼 CRM Michelone")
 with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
     st.text_input("Nome Cliente", key="cliente_key")
     st.selectbox("Tipo Cliente", ["Cliente", "Prospect"], key="tipo_key")
+    
+    # --- NUOVI CAMPI INSERITI QUI SULLA STESSA RIGA ---
+    col_ref, col_tel = st.columns(2)
+    with col_ref: st.text_input("Referente", key="referente_key")
+    with col_tel: st.text_input("Telefono", key="telefono_key")
     
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
@@ -305,6 +319,11 @@ if st.session_state.ricerca_attiva:
                     except: idx_tp = 0
                     new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
 
+                    # NUOVI CAMPI IN MODALITÀ MODIFICA
+                    c_rt1, c_rt2 = st.columns(2)
+                    with c_rt1: new_referente = st.text_input("Referente", value=row.get('referente', ''), key=f"e_ref_{row['id']}")
+                    with c_rt2: new_telefono = st.text_input("Telefono", value=row.get('telefono', ''), key=f"e_tel_{row['id']}")
+
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
@@ -327,8 +346,8 @@ if st.session_state.ricerca_attiva:
                     cs, cc = st.columns(2)
                     if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
                         with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=? WHERE id=?""",
-                                         (new_cliente, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, row['id']))
+                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=? WHERE id=?""",
+                                         (new_cliente, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, new_referente, new_telefono, row['id']))
                         st.session_state.edit_mode_id = None
                         st.rerun()
                     if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
@@ -338,6 +357,13 @@ if st.session_state.ricerca_attiva:
                 # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
+                    
+                    # VISUALIZZAZIONE NUOVI CAMPI SE PRESENTI
+                    ref_val = row.get('referente', '')
+                    tel_val = row.get('telefono', '')
+                    if ref_val or tel_val:
+                        st.write(f"👤 **Referente:** {ref_val} | 📞 **Tel:** {tel_val}")
+                        
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
                     st.text_area("Note:", value=row['note'], height=250, key=f"v_note_{row['id']}")
@@ -411,12 +437,14 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
                         
+                        # INSERITA CREAZIONE NUOVI CAMPI ANCHE QUI NEL RIPRISTINO
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
                                       tipo_cliente TEXT, data TEXT, note TEXT,
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
-                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0)''')
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
+                                      referente TEXT, telefono TEXT)''')
                         conn.commit()
                         
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
