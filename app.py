@@ -330,9 +330,8 @@ if st.session_state.ricerca_attiva:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    # NOTE VISUALIZZAZIONE: Modificato per permettere la copia del testo!
-                    st.text_area("Note (Seleziona e Copia):", value=row['note'], height=250, key=f"v_note_{row['id']}")
-                    st.caption("💡 *Puoi cliccare qui sopra, selezionare il testo e copiarlo liberamente. Se modifichi il testo per sbaglio non verrà salvato (per salvare usa il tasto Modifica in basso).*")
+                    # NOTE VISUALIZZAZIONE: Didascalia rimossa per risparmiare spazio!
+                    st.text_area("Note:", value=row['note'], height=250, key=f"v_note_{row['id']}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
                     check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
