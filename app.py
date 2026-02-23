@@ -327,8 +327,8 @@ if st.session_state.ricerca_attiva:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    # --- NUOVA GESTIONE DELLA CASELLA NOTE CON TASTO COPIA INTEGRATO ---
-                    st.write("**Note:** *(Passa il mouse sul riquadro per far apparire l'icona di copia in alto a destra)*")
+                    # --- RIGA MODIFICATA: Rimossa l'istruzione sul mouse ---
+                    st.write("**Note:**")
                     st.code(row['note'], language="text")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
@@ -347,7 +347,7 @@ if st.session_state.ricerca_attiva:
                         except: pass
 
                     if row['latitudine'] and row['longitudine']:
-                        mappa_url = f"https://www.google.com/maps/search/?api=1&query={row['latitudine']},{row['longitudine']}"
+                        mappa_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
                         st.markdown(f"📍 [Apri in Maps]({mappa_url})")
                     
                     cb_m, cb_d = st.columns([1, 1])
