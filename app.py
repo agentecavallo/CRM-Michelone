@@ -66,9 +66,15 @@ def controllo_backup_automatico():
             try:
                 df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
                 if not df.empty:
+                    # --- CANCELLA I VECCHI BACKUP (OTTIMIZZATO PER AWS) ---
+                    for file in os.listdir(cartella_backup):
+                        if file.endswith('.xlsx'):
+                            os.remove(os.path.join(cartella_backup, file))
+                            
+                    # --- CREA IL NUOVO BACKUP ---
                     nome_file = f"Backup_Auto_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
                     df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
-                    st.toast("🛡️ Backup Settimanale Eseguito!", icon="✅")
+                    st.toast("🛡️ Backup Salvato (I vecchi sono stati eliminati)", icon="✅")
             except:
                 pass 
 
@@ -427,8 +433,9 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     if os.path.exists(cartella_backup):
         files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
         if files_backup:
+            # Ordina in modo da avere sempre il file in vista
             files_backup.sort(reverse=True)
-            file_selezionato = st.selectbox("Seleziona un backup automatico:", files_backup)
+            file_selezionato = st.selectbox("Seleziona il backup automatico (Ne viene salvato solo uno!):", files_backup)
             
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
                 st.download_button(
