@@ -143,7 +143,8 @@ def salva_visita():
 
 
 # --- CALLBACKS PER I PULSANTI IN ARCHIVIO E SCADENZE ---
-def posticipa_fup(id_val, giorni):
+def posticipa_fup(id_val):
+    giorni = st.session_state.get('temp_giorni', 0)
     nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
     with sqlite3.connect('crm_mobile.db') as conn:
         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
@@ -266,7 +267,12 @@ with sqlite3.connect('crm_mobile.db') as conn:
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
-        row_id = int(row['id'])
+        # --- FIX: Sicurezza per ID errati ---
+        try:
+            row_id = int(float(row['id']))
+        except (ValueError, TypeError):
+            continue
+
         try:
             d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
@@ -281,9 +287,16 @@ if not df_scadenze.empty:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
-                st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup, args=(row_id, 1))
+                # Modifica tecnica per evitare errori di args nel callback
+                if st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True):
+                    st.session_state.temp_giorni = 1
+                    posticipa_fup(row_id)
+                    st.rerun()
             with c2:
-                st.button("+7 📅", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup, args=(row_id, 7))
+                if st.button("+7 📅", key=f"p7_{row_id}", use_container_width=True):
+                    st.session_state.temp_giorni = 7
+                    posticipa_fup(row_id)
+                    st.rerun()
             with c3:
                 st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                     
@@ -342,7 +355,12 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            row_id = int(row['id'])
+            # --- FIX: Sicurezza per ID errati ---
+            try:
+                row_id = int(float(row['id']))
+            except (ValueError, TypeError):
+                continue
+                
             icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
             
@@ -382,7 +400,6 @@ if st.session_state.ricerca_attiva:
                         st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row_id}")
 
                     cs, cc = st.columns(2)
-                    # Usiamo i callback super sicuri qui
                     cs.button("💾 SALVA", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
                     cc.button("❌ ANNULLA", key=f"canc_{row_id}", use_container_width=True, on_click=cancel_edit)
                 
