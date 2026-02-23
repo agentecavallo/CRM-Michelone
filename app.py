@@ -51,32 +51,36 @@ def controllo_backup_automatico():
     if not os.path.exists(cartella_backup):
         os.makedirs(cartella_backup)
     
-    files = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
-    fare_backup = not files
+    now = datetime.now()
     
-    if files:
-        percorsi_completi = [os.path.join(cartella_backup, f) for f in files]
-        file_piu_recente = max(percorsi_completi, key=os.path.getctime)
-        # Backup ogni 7 giorni
-        if datetime.now() - datetime.fromtimestamp(os.path.getctime(file_piu_recente)) > timedelta(days=7):
-            fare_backup = True
-            
-    if fare_backup:
-        with sqlite3.connect('crm_mobile.db') as conn:
-            try:
-                df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
-                if not df.empty:
-                    # --- CANCELLA I VECCHI BACKUP (OTTIMIZZATO PER AWS) ---
-                    for file in os.listdir(cartella_backup):
-                        if file.endswith('.xlsx'):
-                            os.remove(os.path.join(cartella_backup, file))
-                            
-                    # --- CREA IL NUOVO BACKUP ---
-                    nome_file = f"Backup_Auto_{datetime.now().strftime('%Y-%m-%d')}.xlsx"
-                    df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
-                    st.toast("🛡️ Backup Salvato (I vecchi sono stati eliminati)", icon="✅")
-            except:
-                pass 
+    # 1. Controlliamo se sono passate le 7:00 di mattina
+    if now.hour >= 7:
+        today_str = now.strftime('%Y-%m-%d')
+        backup_di_oggi_esiste = False
+        
+        # 2. Controlliamo se nella cartella c'è già un file con la data di OGGI
+        for file in os.listdir(cartella_backup):
+            if file.endswith('.xlsx') and today_str in file:
+                backup_di_oggi_esiste = True
+                break
+                
+        # 3. Se NON c'è il backup di oggi, procediamo a farlo
+        if not backup_di_oggi_esiste:
+            with sqlite3.connect('crm_mobile.db') as conn:
+                try:
+                    df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
+                    if not df.empty:
+                        # Cancella tutti i vecchi backup (salva spazio AWS)
+                        for file in os.listdir(cartella_backup):
+                            if file.endswith('.xlsx'):
+                                os.remove(os.path.join(cartella_backup, file))
+                                
+                        # Crea il nuovo backup con la data di oggi
+                        nome_file = f"Backup_Auto_{today_str}.xlsx"
+                        df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
+                        st.toast(f"🛡️ Backup Giornaliero ({today_str}) Eseguito!", icon="✅")
+                except:
+                    pass
 
 controllo_backup_automatico()
 
@@ -336,7 +340,6 @@ if st.session_state.ricerca_attiva:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    # NOTE VISUALIZZAZIONE: Didascalia rimossa per risparmiare spazio!
                     st.text_area("Note:", value=row['note'], height=250, key=f"v_note_{row['id']}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
