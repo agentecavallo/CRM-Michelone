@@ -174,7 +174,9 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    st.text_area("Note", key="note_key", height=150)
+    # --- RIGA AGGIORNATA: Anche qui altezza a 250px ---
+    st.text_area("Note", key="note_key", height=250)
+    
     st.write("📅 **Pianifica Ricontatto:**")
     st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
@@ -302,7 +304,7 @@ if st.session_state.ricerca_attiva:
                     new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     
-                    # --- RIGA AGGIORNATA: Altezza impostata a 250px ---
+                    # --- Anche qui altezza a 250px ---
                     new_note = st.text_area("Note", value=row['note'], height=250, key=f"e_note_{row['id']}")
                     
                     fup_attuale = row['data_followup']
