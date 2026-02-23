@@ -19,9 +19,10 @@ if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = F
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
 def inizializza_db():
-    with sqlite3.connect('crm_mobile.db') as conn:
-      
-        c = conn.cursor()
+with sqlite3.connect('crm_mobile.db') as conn:
+    cursor = conn.cursor()
+    # Qui di solito seguono i comandi per leggere o scrivere nel database
+      c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -489,5 +490,6 @@ with col_f2:
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.info("✅ Michelone Approved")
+
 
 
