@@ -271,4 +271,188 @@ if st.session_state.ricerca_attiva:
         df = df[df['copiato_crm'] == 1]
 
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-         df =
+         df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
+
+    if not df.empty:
+        st.success(f"Trovate {len(df)} visite.")
+        if st.button("❌ Chiudi Ricerca"):
+            st.session_state.ricerca_attiva = False
+            st.rerun()
+
+        for _, row in df.iterrows():
+            icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
+            badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
+            
+            with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}"):
+                
+                # --- MODALITÀ MODIFICA (ARCHIVIO) ---
+                if st.session_state.edit_mode_id == row['id']:
+                    st.info("✏️ Modifica Dati")
+                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    
+                    lista_tp = ["Prospect", "Cliente"]
+                    try: idx_tp = lista_tp.index(row['tipo_cliente'])
+                    except: idx_tp = 0
+                    new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
+
+                    lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
+                    try: idx_ag = lista_agenti.index(row['agente'])
+                    except: idx_ag = 0
+                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
+                    
+                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
+                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
+                    
+                    # NOTE MODIFICA: 250px
+                    new_note = st.text_area("Note", value=row['note'], height=250, key=f"e_note_{row['id']}")
+                    
+                    fup_attuale = row['data_followup']
+                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
+                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
+                    new_fup = ""
+                    if attiva_fup:
+                        new_fup_dt = st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row['id']}")
+                        new_fup = new_fup_dt.strftime("%Y-%m-%d")
+
+                    cs, cc = st.columns(2)
+                    if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
+                        with sqlite3.connect('crm_mobile.db') as conn:
+                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=? WHERE id=?""",
+                                         (new_cliente, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, row['id']))
+                        st.session_state.edit_mode_id = None
+                        st.rerun()
+                    if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
+                        st.session_state.edit_mode_id = None
+                        st.rerun()
+                
+                # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
+                else:
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
+                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
+                    
+                    # NOTE VISUALIZZAZIONE: Modificato per permettere la copia del testo!
+                    st.text_area("Note (Seleziona e Copia):", value=row['note'], height=250, key=f"v_note_{row['id']}")
+                    st.caption("💡 *Puoi cliccare qui sopra, selezionare il testo e copiarlo liberamente. Se modifichi il testo per sbaglio non verrà salvato (per salvare usa il tasto Modifica in basso).*")
+                    
+                    is_copied = True if row.get('copiato_crm') == 1 else False
+                    check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
+                    
+                    if check_val != is_copied:
+                        nuovo_val = 1 if check_val else 0
+                        with sqlite3.connect('crm_mobile.db') as conn:
+                            conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
+                        st.rerun()
+
+                    if row['data_followup']:
+                        try:
+                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                            st.write(f"📅 **Ricontatto:** {data_fup_it}")
+                        except: pass
+
+                    if row['latitudine'] and row['longitudine']:
+                        mappa_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
+                        st.markdown(f"📍 [Apri in Maps]({mappa_url})")
+                    
+                    cb_m, cb_d = st.columns([1, 1])
+                    if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
+                        st.session_state.edit_mode_id = row['id']
+                        st.rerun()
+                    
+                    key_conf = f"confirm_del_{row['id']}"
+                    if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
+                        st.session_state[key_conf] = True
+                        st.rerun()
+                    
+                    if st.session_state.get(key_conf, False):
+                        st.warning("⚠️ Sicuro?")
+                        cy, cn = st.columns(2)
+                        if cy.button("SÌ", key=f"yes_{row['id']}", type="primary"):
+                            with sqlite3.connect('crm_mobile.db') as conn:
+                                conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
+                            st.rerun()
+                        if cn.button("NO", key=f"no_{row['id']}"):
+                            del st.session_state[key_conf]
+                            st.rerun()
+    else:
+        st.warning("Nessun risultato trovato.")
+
+# --- GESTIONE DATI E RIPRISTINO SICURO ---
+st.divider()
+with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        df_full = pd.read_sql_query("SELECT * FROM visite", conn)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_full.to_excel(writer, index=False)
+    
+    st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
+    
+    st.markdown("---")
+    st.write("📤 **RIPRISTINO DATI**")
+    st.caption("Carica un backup Excel. ATTENZIONE: i dati attuali verranno sostituiti!")
+    file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
+    
+    if file_caricato is not None:
+        if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
+            try:
+                df_ripristino = pd.read_excel(file_caricato)
+                if 'cliente' in df_ripristino.columns:
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        c = conn.cursor()
+                        c.execute("DROP TABLE IF EXISTS visite")
+                        conn.commit()
+                        
+                        c.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                      cliente TEXT, localita TEXT, provincia TEXT,
+                                      tipo_cliente TEXT, data TEXT, note TEXT,
+                                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0)''')
+                        conn.commit()
+                        
+                        df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                        
+                    st.success("✅ Database ripristinato correttamente! Riavvio...")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("❌ Il file non sembra un backup valido del CRM.")
+            except Exception as e:
+                st.error(f"Errore durante il ripristino: {e}")
+                
+    st.markdown("---")
+    st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
+    
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    if os.path.exists(cartella_backup):
+        files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
+        if files_backup:
+            files_backup.sort(reverse=True)
+            file_selezionato = st.selectbox("Seleziona un backup automatico:", files_backup)
+            
+            with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
+                st.download_button(
+                    label=f"⬇️ SCARICA {file_selezionato}",
+                    data=f,
+                    file_name=file_selezionato,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Nessun backup automatico generato finora.")
+    else:
+        st.info("La cartella dei backup verrà creata al primo salvataggio.")
+
+# --- LOGO FINALE ---
+st.write("") 
+st.divider() 
+
+col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
+
+with col_f2:
+    try:
+        st.image("logo.jpg", use_container_width=True)
+        st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+    except Exception:
+        st.info("✅ Michelone Approved")
