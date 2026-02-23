@@ -268,7 +268,11 @@ st.subheader("🔍 Archivio Visite")
 
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
-periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
+
+# FIX 1: Usiamo .date() per stabilizzare il calendario ed evitare che Streamlit resetti i bottoni
+oggi_dt = datetime.today().date()
+periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
+
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
 f4, f5, f6 = st.columns([1, 1, 1])
@@ -321,7 +325,7 @@ if st.session_state.ricerca_attiva:
                 # --- MODALITÀ MODIFICA (ARCHIVIO) ---
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
-                    new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
+                    new_cliente = st.text_input("Cliente", value=str(row['cliente'] or ""), key=f"e_cli_{row['id']}")
                     
                     lista_tp = ["Prospect", "Cliente"]
                     try: idx_tp = lista_tp.index(row['tipo_cliente'])
@@ -329,21 +333,22 @@ if st.session_state.ricerca_attiva:
                     new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
 
                     c_rt1, c_rt2 = st.columns(2)
-                    with c_rt1: new_referente = st.text_input("Referente", value=row.get('referente', ''), key=f"e_ref_{row['id']}")
-                    with c_rt2: new_telefono = st.text_input("Telefono", value=row.get('telefono', ''), key=f"e_tel_{row['id']}")
+                    with c_rt1: new_referente = st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row['id']}")
+                    with c_rt2: new_telefono = st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row['id']}")
 
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
                     new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
                     
-                    new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
-                    new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
+                    new_loc = st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row['id']}")
+                    new_prov = st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row['id']}")
                     
-                    new_note = st.text_area("Note", value=row['note'], height=250, key=f"e_note_{row['id']}")
+                    new_note = st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row['id']}")
                     
                     fup_attuale = row['data_followup']
-                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
+                    # FIX 2: Aggiunto .date() anche qui per stabilizzare il calendario in modifica
+                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
                     attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
                     new_fup = ""
                     if attiva_fup:
@@ -373,7 +378,7 @@ if st.session_state.ricerca_attiva:
                         
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    st.text_area("Note:", value=row['note'], height=250, key=f"v_note_{row['id']}")
+                    st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row['id']}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
                     check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
