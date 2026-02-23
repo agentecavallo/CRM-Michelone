@@ -154,7 +154,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_input("Nome Cliente", key="cliente_key")
     st.selectbox("Tipo Cliente", ["Cliente", "Prospect"], key="tipo_key")
     
-    # --- NUOVI CAMPI INSERITI QUI SULLA STESSA RIGA ---
     col_ref, col_tel = st.columns(2)
     with col_ref: st.text_input("Referente", key="referente_key")
     with col_tel: st.text_input("Telefono", key="telefono_key")
@@ -198,7 +197,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    # NOTE REGISTRAZIONE: 250px
     st.text_area("Note", key="note_key", height=250)
     
     st.write("📅 **Pianifica Ricontatto:**")
@@ -227,7 +225,6 @@ if not df_scadenze.empty:
             st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            # Riga 1 dei bottoni (i classici)
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
                 if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
@@ -247,7 +244,6 @@ if not df_scadenze.empty:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
                     
-            # Riga 2 dei bottoni
             c4, c5 = st.columns(2)
             with c4:
                 if st.button("➡️ Prox. Lunedì", key=f"pl_{row['id']}", use_container_width=True):
@@ -265,13 +261,16 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# FILTRI DI RICERCA
-f1, f2, f3, f4, f5 = st.columns([1.5, 1, 1, 1, 1])
+# FILTRI DI RICERCA (Riorganizzati su due righe per comodità)
+f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+
+f4, f5, f6 = st.columns([1, 1, 1])
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
+f_referente = f6.selectbox("Filtra Referente", ["Tutti", "Con Referente", "Senza Referente"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -293,6 +292,12 @@ if st.session_state.ricerca_attiva:
         df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
     elif f_stato_crm == "Caricati":
         df = df[df['copiato_crm'] == 1]
+        
+    # NUOVO FILTRO REFERENTE
+    if f_referente == "Con Referente":
+        df = df[(df['referente'].notnull()) & (df['referente'].str.strip() != '')]
+    elif f_referente == "Senza Referente":
+        df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
 
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
@@ -437,7 +442,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
                         
-                        # INSERITA CREAZIONE NUOVI CAMPI ANCHE QUI NEL RIPRISTINO
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
