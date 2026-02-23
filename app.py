@@ -11,6 +11,17 @@ from streamlit_js_eval import get_geolocation
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
+# --- TRUCCO PER LA CALLIGRAFIA (CSS) ---
+# Forza i campi di testo a usare lo stesso font dell'app
+st.markdown("""
+    <style>
+    .stTextArea textarea {
+        font-family: "Source Sans Pro", sans-serif !important;
+        font-size: 1rem !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
 # Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
@@ -27,11 +38,10 @@ def inizializza_db():
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                       latitudine TEXT, longitudine TEXT)''')
         
-        # --- AGGIUNTA COLONNA PER CHECKBOX CRM (Migrazione Automatica) ---
         try:
             c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
         except:
-            pass # Se la colonna esiste già, ignora l'errore
+            pass 
             
         conn.commit()
 
@@ -39,7 +49,6 @@ inizializza_db()
 
 # --- FUNZIONE CALCOLO GIORNI ---
 def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
-    # 0 = Lunedì, 4 = Venerdì
     giorni_mancanti = giorno_obiettivo - data_partenza.weekday()
     if giorni_mancanti <= 0:
         giorni_mancanti += 7
@@ -57,7 +66,6 @@ def controllo_backup_automatico():
     if files:
         percorsi_completi = [os.path.join(cartella_backup, f) for f in files]
         file_piu_recente = max(percorsi_completi, key=os.path.getctime)
-        # Backup ogni 7 giorni
         if datetime.now() - datetime.fromtimestamp(os.path.getctime(file_piu_recente)) > timedelta(days=7):
             fare_backup = True
             
@@ -98,7 +106,6 @@ def salva_visita():
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             
-            # Gestione delle nuove opzioni di data
             if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 giorni = int(scelta.split()[0])
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
@@ -115,7 +122,6 @@ def salva_visita():
                        s.lat_val, s.lon_val))
             conn.commit()
         
-        # Reset dei campi
         st.session_state.cliente_key = ""
         st.session_state.localita_key = ""
         st.session_state.prov_key = ""
@@ -123,7 +129,6 @@ def salva_visita():
         st.session_state.lat_val = ""
         st.session_state.lon_val = ""
         st.session_state.fup_opt = "No"
-        
         st.toast("✅ Visita salvata!", icon="💾")
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
@@ -174,7 +179,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    # --- RIGA AGGIORNATA: Anche qui altezza a 250px ---
+    # NOTE REGISTRAZIONE: 250px + Nuova Calligrafia
     st.text_area("Note", key="note_key", height=250)
     
     st.write("📅 **Pianifica Ricontatto:**")
@@ -203,7 +208,6 @@ if not df_scadenze.empty:
             st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            # Riga 1 dei bottoni (i classici)
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
                 if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
@@ -222,18 +226,17 @@ if not df_scadenze.empty:
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
                     st.rerun()
-                    
-            # Riga 2 dei bottoni (I nuovi bottoni settimanali, su una riga separata)
+            
             c4, c5 = st.columns(2)
             with c4:
                 if st.button("➡️ Prox. Lunedì", key=f"pl_{row['id']}", use_container_width=True):
-                    nuova_data = calcola_prossimo_giorno(datetime.now(), 0) # 0 = Lunedì
+                    nuova_data = calcola_prossimo_giorno(datetime.now(), 0)
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
             with c5:
                 if st.button("➡️ Prox. Venerdì", key=f"pv_{row['id']}", use_container_width=True):
-                    nuova_data = calcola_prossimo_giorno(datetime.now(), 4) # 4 = Venerdì
+                    nuova_data = calcola_prossimo_giorno(datetime.now(), 4)
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
                     st.rerun()
@@ -241,7 +244,6 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# FILTRI DI RICERCA
 f1, f2, f3, f4, f5 = st.columns([1.5, 1, 1, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 periodo = f2.date_input("Periodo", [datetime.now() - timedelta(days=60), datetime.now()])
@@ -257,7 +259,6 @@ if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
-    # APPLICAZIONE FILTRI
     if t_ricerca:
         df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
     if f_agente != "Tutti":
@@ -265,7 +266,6 @@ if st.session_state.ricerca_attiva:
     if f_tipo != "Tutti":
         df = df[df['tipo_cliente'] == f_tipo]
     
-    # Logica filtro CRM
     if f_stato_crm == "Da Caricare":
         df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
     elif f_stato_crm == "Caricati":
@@ -290,21 +290,18 @@ if st.session_state.ricerca_attiva:
                 if st.session_state.edit_mode_id == row['id']:
                     st.info("✏️ Modifica Dati")
                     new_cliente = st.text_input("Cliente", value=row['cliente'], key=f"e_cli_{row['id']}")
-                    
                     lista_tp = ["Prospect", "Cliente"]
                     try: idx_tp = lista_tp.index(row['tipo_cliente'])
                     except: idx_tp = 0
                     new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
-
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
                     new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
-                    
                     new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     
-                    # --- Anche qui altezza a 250px ---
+                    # NOTE MODIFICA: 250px + Nuova Calligrafia
                     new_note = st.text_area("Note", value=row['note'], height=250, key=f"e_note_{row['id']}")
                     
                     fup_attuale = row['data_followup']
@@ -330,12 +327,12 @@ if st.session_state.ricerca_attiva:
                 else:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
-                    st.write("**Note:**")
-                    st.code(row['note'], language="text")
+                    
+                    # NOTE VISUALIZZAZIONE: 250px + Calligrafia Standard
+                    st.text_area("Note:", value=row['note'], height=250, disabled=True, key=f"v_note_{row['id']}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
                     check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
-                    
                     if check_val != is_copied:
                         nuovo_val = 1 if check_val else 0
                         with sqlite3.connect('crm_mobile.db') as conn:
@@ -361,7 +358,6 @@ if st.session_state.ricerca_attiva:
                     if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
                         st.session_state[key_conf] = True
                         st.rerun()
-                    
                     if st.session_state.get(key_conf, False):
                         st.warning("⚠️ Sicuro?")
                         cy, cn = st.columns(2)
@@ -380,18 +376,13 @@ st.divider()
 with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
     with sqlite3.connect('crm_mobile.db') as conn:
         df_full = pd.read_sql_query("SELECT * FROM visite", conn)
-    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_full.to_excel(writer, index=False)
-    
     st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
-    
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI**")
-    st.caption("Carica un backup Excel. ATTENZIONE: i dati attuali verranno sostituiti!")
     file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
-    
     if file_caricato is not None:
         if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
             try:
@@ -401,7 +392,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                         c = conn.cursor()
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
-                        
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -409,47 +399,30 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0)''')
                         conn.commit()
-                        
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
-                        
                     st.success("✅ Database ripristinato correttamente! Riavvio...")
                     time.sleep(2)
                     st.rerun()
-                else:
-                    st.error("❌ Il file non sembra un backup valido del CRM.")
             except Exception as e:
                 st.error(f"Errore durante il ripristino: {e}")
                 
-    # --- DOWNLOAD BACKUP AUTOMATICI DAL SERVER ---
     st.markdown("---")
     st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
-    
     cartella_backup = "BACKUPS_AUTOMATICI"
     if os.path.exists(cartella_backup):
         files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
         if files_backup:
             files_backup.sort(reverse=True)
             file_selezionato = st.selectbox("Seleziona un backup automatico:", files_backup)
-            
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
-                st.download_button(
-                    label=f"⬇️ SCARICA {file_selezionato}",
-                    data=f,
-                    file_name=file_selezionato,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
+                st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f, file_name=file_selezionato, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
         else:
-            st.info("Nessun backup automatico generato finora (il primo avverrà tra 7 giorni).")
-    else:
-        st.info("La cartella dei backup automatici verrà creata al primo salvataggio.")
+            st.info("Nessun backup automatico generato finora.")
 
 # --- LOGO FINALE ---
 st.write("") 
 st.divider() 
-
 col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
-
 with col_f2:
     try:
         st.image("logo.jpg", use_container_width=True)
