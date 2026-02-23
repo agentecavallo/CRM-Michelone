@@ -302,8 +302,8 @@ if st.session_state.ricerca_attiva:
                     new_loc = st.text_input("Località", value=row['localita'], key=f"e_loc_{row['id']}")
                     new_prov = st.text_input("Prov.", value=row['provincia'], max_chars=2, key=f"e_prov_{row['id']}")
                     
-                    # --- RIGA AGGIORNATA: Altezza raddoppiata (height=200) ---
-                    new_note = st.text_area("Note", value=row['note'], height=200, key=f"e_note_{row['id']}")
+                    # --- RIGA AGGIORNATA: Altezza raddoppiata ancora (height=400) ---
+                    new_note = st.text_area("Note", value=row['note'], height=400, key=f"e_note_{row['id']}")
                     
                     fup_attuale = row['data_followup']
                     val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d") if fup_attuale else datetime.now()
