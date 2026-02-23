@@ -7,7 +7,6 @@ import time
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
-import streamlit.components.v1 as components
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
@@ -45,34 +44,6 @@ def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
     if giorni_mancanti <= 0:
         giorni_mancanti += 7
     return (data_partenza + timedelta(days=giorni_mancanti)).strftime("%Y-%m-%d")
-
-# --- FUNZIONE JAVASCRIPT PER COPIARE ---
-def copia_negli_appunti(testo, id_bottone):
-    html_code = f"""
-    <button id="btn_{id_bottone}" style="
-        background-color: #f0f2f6; 
-        border: 1px solid #dcdfe3; 
-        border-radius: 5px; 
-        padding: 5px 10px; 
-        cursor: pointer;
-        width: 100%;
-        font-weight: bold;
-        color: #31333F;">
-        📋 COPIA NOTE
-    </button>
-
-    <script>
-    document.getElementById("btn_{id_bottone}").onclick = function() {{
-        const text = `{testo}`;
-        navigator.clipboard.writeText(text).then(function() {{
-            alert("Note copiate negli appunti!");
-        }}, function(err) {{
-            console.error('Errore nel copia:', err);
-        }});
-    }};
-    </script>
-    """
-    components.html(html_code, height=45)
 
 # --- 2. FUNZIONI DI SUPPORTO ---
 def controllo_backup_automatico():
@@ -356,22 +327,18 @@ if st.session_state.ricerca_attiva:
                     st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    st.write("**Note:**")
-                    col_note, col_copia = st.columns([2, 1])
-                    with col_note:
-                        st.info(row['note'])
-                    with col_copia:
-                        copia_negli_appunti(row['note'].replace("`", "'"), row['id'])
-                        st.write("") 
-                        
-                        is_copied = True if row.get('copiato_crm') == 1 else False
-                        check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
-                        
-                        if check_val != is_copied:
-                            nuovo_val = 1 if check_val else 0
-                            with sqlite3.connect('crm_mobile.db') as conn:
-                                conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
-                            st.rerun()
+                    # --- NUOVA GESTIONE DELLA CASELLA NOTE CON TASTO COPIA INTEGRATO ---
+                    st.write("**Note:** *(Passa il mouse sul riquadro per far apparire l'icona di copia in alto a destra)*")
+                    st.code(row['note'], language="text")
+                    
+                    is_copied = True if row.get('copiato_crm') == 1 else False
+                    check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
+                    
+                    if check_val != is_copied:
+                        nuovo_val = 1 if check_val else 0
+                        with sqlite3.connect('crm_mobile.db') as conn:
+                            conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
+                        st.rerun()
 
                     if row['data_followup']:
                         try:
