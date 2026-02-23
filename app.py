@@ -50,37 +50,31 @@ def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
         giorni_mancanti += 7
     return (data_partenza + timedelta(days=giorni_mancanti)).strftime("%Y-%m-%d")
 
-# --- 2. FUNZIONI DI SUPPORTO ---
+# --- 2. FUNZIONI DI SUPPORTO E CALLBACKS ---
 def controllo_backup_automatico():
     cartella_backup = "BACKUPS_AUTOMATICI"
     if not os.path.exists(cartella_backup):
         os.makedirs(cartella_backup)
     
     now = datetime.now()
-    
-    # 1. Controlliamo se sono passate le 7:00 di mattina
     if now.hour >= 7:
         today_str = now.strftime('%Y-%m-%d')
         backup_di_oggi_esiste = False
         
-        # 2. Controlliamo se nella cartella c'è già un file con la data di OGGI
         for file in os.listdir(cartella_backup):
             if file.endswith('.xlsx') and today_str in file:
                 backup_di_oggi_esiste = True
                 break
                 
-        # 3. Se NON c'è il backup di oggi, procediamo a farlo
         if not backup_di_oggi_esiste:
             with sqlite3.connect('crm_mobile.db') as conn:
                 try:
                     df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
                     if not df.empty:
-                        # Cancella tutti i vecchi backup (salva spazio AWS)
                         for file in os.listdir(cartella_backup):
                             if file.endswith('.xlsx'):
                                 os.remove(os.path.join(cartella_backup, file))
                                 
-                        # Crea il nuovo backup con la data di oggi
                         nome_file = f"Backup_Auto_{today_str}.xlsx"
                         df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
                         st.toast(f"🛡️ Backup Giornaliero ({today_str}) Eseguito!", icon="✅")
@@ -146,6 +140,65 @@ def salva_visita():
         st.toast("✅ Visita salvata!", icon="💾")
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
+
+
+# --- CALLBACKS PER I PULSANTI IN ARCHIVIO E SCADENZE ---
+def posticipa_fup(id_val, giorni):
+    nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
+        conn.commit()
+
+def set_fup_prox(id_val, giorno_settimana):
+    nuova_data = calcola_prossimo_giorno(datetime.now(), giorno_settimana)
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
+        conn.commit()
+
+def azzera_fup(id_val):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (id_val,))
+        conn.commit()
+
+def set_edit_mode(id_val): st.session_state.edit_mode_id = id_val
+def cancel_edit(): st.session_state.edit_mode_id = None
+def ask_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = True
+def cancel_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = False
+
+def execute_save_modifica(id_val):
+    s = st.session_state
+    new_cli = s.get(f"e_cli_{id_val}", "")
+    new_tipo = s.get(f"e_tp_{id_val}", "Prospect")
+    new_loc = s.get(f"e_loc_{id_val}", "")
+    new_prov = s.get(f"e_prov_{id_val}", "")
+    new_note = s.get(f"e_note_{id_val}", "")
+    new_ag = s.get(f"e_ag_{id_val}", "HSE")
+    new_ref = s.get(f"e_ref_{id_val}", "")
+    new_tel = s.get(f"e_tel_{id_val}", "")
+    
+    new_fup = ""
+    if s.get(f"e_chk_{id_val}", False):
+        dt = s.get(f"e_dt_{id_val}")
+        if dt: new_fup = dt.strftime("%Y-%m-%d")
+        
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=? WHERE id=?""",
+                     (new_cli, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_ag, new_fup, new_ref, new_tel, id_val))
+        conn.commit()
+    st.session_state.edit_mode_id = None
+
+def execute_delete_visita(id_val):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("DELETE FROM visite WHERE id = ?", (id_val,))
+        conn.commit()
+    st.session_state[f"confirm_del_{id_val}"] = False
+
+def toggle_crm_copy(id_val):
+    new_val = 1 if st.session_state.get(f"chk_crm_{id_val}", False) else 0
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (new_val, id_val))
+        conn.commit()
+
 
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
@@ -213,6 +266,7 @@ with sqlite3.connect('crm_mobile.db') as conn:
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
+        row_id = int(row['id'])
         try:
             d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
@@ -227,41 +281,17 @@ if not df_scadenze.empty:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
-                if st.button("+1 ☀️", key=f"p1_{row['id']}", use_container_width=True):
-                    nuova_data = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
-                        conn.commit()
-                    st.rerun()
+                st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup, args=(row_id, 1))
             with c2:
-                if st.button("+7 📅", key=f"p7_{row['id']}", use_container_width=True):
-                    nuova_data = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
-                        conn.commit()
-                    st.rerun()
+                st.button("+7 📅", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup, args=(row_id, 7))
             with c3:
-                if st.button("✅ Fatto", key=f"ok_{row['id']}", type="primary", use_container_width=True):
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (row['id'],))
-                        conn.commit()
-                    st.rerun()
+                st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                     
             c4, c5 = st.columns(2)
             with c4:
-                if st.button("➡️ Prox. Lunedì", key=f"pl_{row['id']}", use_container_width=True):
-                    nuova_data = calcola_prossimo_giorno(datetime.now(), 0)
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
-                        conn.commit()
-                    st.rerun()
+                st.button("➡️ Prox. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
             with c5:
-                if st.button("➡️ Prox. Venerdì", key=f"pv_{row['id']}", use_container_width=True):
-                    nuova_data = calcola_prossimo_giorno(datetime.now(), 4)
-                    with sqlite3.connect('crm_mobile.db') as conn:
-                        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, row['id']))
-                        conn.commit()
-                    st.rerun()
+                st.button("➡️ Prox. Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
 
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
@@ -269,7 +299,6 @@ st.subheader("🔍 Archivio Visite")
 f1, f2, f3 = st.columns([1.5, 1, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Città")
 
-# FIX 1: Usiamo .date() per stabilizzare il calendario ed evitare che Streamlit resetti i bottoni
 oggi_dt = datetime.today().date()
 periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
 
@@ -313,59 +342,49 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
+            row_id = int(row['id'])
             icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
             badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
             
-            # --- TRUCCO PER TENERE APERTO L'ESPANDIBILE ---
-            key_conf = f"confirm_del_{row['id']}"
-            tendina_aperta = (st.session_state.edit_mode_id == row['id']) or st.session_state.get(key_conf, False)
+            key_conf = f"confirm_del_{row_id}"
+            tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(key_conf, False)
             
             with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                 
                 # --- MODALITÀ MODIFICA (ARCHIVIO) ---
-                if st.session_state.edit_mode_id == row['id']:
+                if st.session_state.edit_mode_id == row_id:
                     st.info("✏️ Modifica Dati")
-                    new_cliente = st.text_input("Cliente", value=str(row['cliente'] or ""), key=f"e_cli_{row['id']}")
+                    st.text_input("Cliente", value=str(row['cliente'] or ""), key=f"e_cli_{row_id}")
                     
                     lista_tp = ["Prospect", "Cliente"]
                     try: idx_tp = lista_tp.index(row['tipo_cliente'])
                     except: idx_tp = 0
-                    new_tipo = st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row['id']}")
+                    st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row_id}")
 
                     c_rt1, c_rt2 = st.columns(2)
-                    with c_rt1: new_referente = st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row['id']}")
-                    with c_rt2: new_telefono = st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row['id']}")
+                    with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
+                    with c_rt2: st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
 
                     lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
                     try: idx_ag = lista_agenti.index(row['agente'])
                     except: idx_ag = 0
-                    new_agente = st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row['id']}")
+                    st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row_id}")
                     
-                    new_loc = st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row['id']}")
-                    new_prov = st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row['id']}")
+                    st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row_id}")
+                    st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row_id}")
                     
-                    new_note = st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row['id']}")
+                    st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
                     
                     fup_attuale = row['data_followup']
-                    # FIX 2: Aggiunto .date() anche qui per stabilizzare il calendario in modifica
                     val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
-                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row['id']}")
-                    new_fup = ""
+                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}")
                     if attiva_fup:
-                        new_fup_dt = st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row['id']}")
-                        new_fup = new_fup_dt.strftime("%Y-%m-%d")
+                        st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row_id}")
 
                     cs, cc = st.columns(2)
-                    if cs.button("💾 SALVA", key=f"save_{row['id']}", type="primary", use_container_width=True):
-                        with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=? WHERE id=?""",
-                                         (new_cliente, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_agente, new_fup, new_referente, new_telefono, row['id']))
-                            conn.commit()
-                        st.session_state.edit_mode_id = None
-                        st.rerun()
-                    if cc.button("❌ ANNULLA", key=f"canc_{row['id']}", use_container_width=True):
-                        st.session_state.edit_mode_id = None
-                        st.rerun()
+                    # Usiamo i callback super sicuri qui
+                    cs.button("💾 SALVA", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
+                    cc.button("❌ ANNULLA", key=f"canc_{row_id}", use_container_width=True, on_click=cancel_edit)
                 
                 # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
@@ -378,17 +397,10 @@ if st.session_state.ricerca_attiva:
                         
                     st.write(f"**Località:** {row['localita']} ({row['provincia']})")
                     
-                    st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row['id']}")
+                    st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row_id}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
-                    check_val = st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row['id']}")
-                    
-                    if check_val != is_copied:
-                        nuovo_val = 1 if check_val else 0
-                        with sqlite3.connect('crm_mobile.db') as conn:
-                            conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (nuovo_val, row['id']))
-                            conn.commit()
-                        st.rerun()
+                    st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row_id}", on_change=toggle_crm_copy, args=(row_id,))
 
                     if row['data_followup']:
                         try:
@@ -401,27 +413,15 @@ if st.session_state.ricerca_attiva:
                         st.markdown(f"📍 [Apri in Maps]({mappa_url})")
                     
                     cb_m, cb_d = st.columns([1, 1])
-                    if cb_m.button("✏️ Modifica", key=f"btn_mod_{row['id']}"):
-                        st.session_state.edit_mode_id = row['id']
-                        st.rerun()
-                    
-                    if cb_d.button("🗑️ Elimina", key=f"btn_del_{row['id']}"):
-                        st.session_state[key_conf] = True
-                        st.rerun()
+                    cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", on_click=set_edit_mode, args=(row_id,))
+                    cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", on_click=ask_delete, args=(row_id,))
                     
                     # --- CONFERMA ELIMINAZIONE ---
                     if st.session_state.get(key_conf, False):
                         st.warning("⚠️ Confermi l'eliminazione definitiva?")
                         cy, cn = st.columns(2)
-                        if cy.button("SÌ, ELIMINA", key=f"yes_{row['id']}", type="primary"):
-                            with sqlite3.connect('crm_mobile.db') as conn:
-                                conn.execute("DELETE FROM visite WHERE id = ?", (row['id'],))
-                                conn.commit()
-                            del st.session_state[key_conf]
-                            st.rerun()
-                        if cn.button("ANNULLA", key=f"no_{row['id']}"):
-                            del st.session_state[key_conf]
-                            st.rerun()
+                        cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary", on_click=execute_delete_visita, args=(row_id,))
+                        cn.button("ANNULLA", key=f"no_{row_id}", on_click=cancel_delete, args=(row_id,))
     else:
         st.warning("Nessun risultato trovato.")
 
