@@ -212,10 +212,9 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with col_ref: st.text_input("Referente", key="referente_key")
     with col_tel: st.text_input("Telefono", key="telefono_key")
     
-    col_l, col_p = st.columns([3, 1]) 
-    with col_l: st.text_input("Località", key="localita_key")
-    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
-
+    st.markdown("---")
+    
+    # --- GPS SPOSTATO QUI (PRIMA DEI CAMPI DI TESTO) ---
     loc_data = get_geolocation()
     if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -246,6 +245,11 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
                 del st.session_state['gps_temp']
                 st.rerun()
 
+    # --- CAMPI LOCALITÀ E PROVINCIA SPOSTATI QUI SOTTO ---
+    col_l, col_p = st.columns([3, 1]) 
+    with col_l: st.text_input("Località", key="localita_key")
+    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
+
     st.markdown("---")
     c1, c2 = st.columns(2)
     with c1: st.date_input("Data", datetime.now(), key="data_key")
@@ -267,7 +271,6 @@ with sqlite3.connect('crm_mobile.db') as conn:
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
     for _, row in df_scadenze.iterrows():
-        # --- FIX: Sicurezza per ID errati ---
         try:
             row_id = int(float(row['id']))
         except (ValueError, TypeError):
@@ -287,7 +290,6 @@ if not df_scadenze.empty:
             
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
-                # Modifica tecnica per evitare errori di args nel callback
                 if st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True):
                     st.session_state.temp_giorni = 1
                     posticipa_fup(row_id)
@@ -355,7 +357,6 @@ if st.session_state.ricerca_attiva:
             st.rerun()
 
         for _, row in df.iterrows():
-            # --- FIX: Sicurezza per ID errati ---
             try:
                 row_id = int(float(row['id']))
             except (ValueError, TypeError):
