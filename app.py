@@ -7,6 +7,7 @@ import time
 from datetime import datetime, timedelta
 from io import BytesIO
 from streamlit_js_eval import get_geolocation
+from streamlit_mic_recorder import speech_to_text # <-- AGGIUNTO PER LE NOTE VOCALI
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
@@ -16,6 +17,7 @@ if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
+if 'note_key' not in st.session_state: st.session_state.note_key = "" # Inizializzato per la voce
 
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
@@ -255,7 +257,24 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    st.text_area("Note", key="note_key", height=250)
+    # --- NUOVA SEZIONE: DETTATURA VOCALE DELLE NOTE ---
+    st.write("📝 **Note della visita:**")
+    testo_vocale = speech_to_text(
+        language='it',
+        start_prompt="🎤 Premi per dettare le note",
+        stop_prompt="🛑 Ferma registrazione",
+        key='mic_note'
+    )
+    
+    # Se il microfono ha registrato qualcosa, lo inseriamo nel campo note
+    if testo_vocale:
+        if st.session_state.note_key:
+            st.session_state.note_key += "\n" + testo_vocale
+        else:
+            st.session_state.note_key = testo_vocale
+
+    st.text_area("Scrivi o modifica le note qui", key="note_key", height=200)
+    # ---------------------------------------------------
     
     st.write("📅 **Pianifica Ricontatto:**")
     st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
@@ -524,4 +543,3 @@ with col_f2:
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.info("✅ Michelone Approved")
-
