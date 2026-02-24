@@ -4,3 +4,4 @@ requests
 streamlit-js-eval
 xlsxwriter
 openpyxl
+streamlit-mic-recorder
