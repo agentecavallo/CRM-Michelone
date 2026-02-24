@@ -11,81 +11,78 @@ from streamlit_js_eval import get_geolocation
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-# --- INIZIO STILE MANGA PROFESSIONALE ---
+# --- INIZIO STILE MINIMAL MANGA ---
 manga_theme = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
 
-/* Sfondo generale con effetto "retino manga" (halftone) */
+/* Sfondo pulito e riposante per gli occhi */
 .stApp {
-    background-color: #ffffff;
-    color: #000000;
+    background-color: #f8f9fa;
+    color: #2c3e50;
     font-family: 'Nunito', sans-serif;
-    background-image: radial-gradient(#d3d3d3 1px, transparent 1px);
-    background-size: 15px 15px;
 }
 
-/* Titoli in stile Action Manga */
+/* Titoli eleganti ma decisi */
 h1, h2, h3 {
-    font-family: 'Bangers', cursive !important;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    text-shadow: 2px 2px 0px #ffffff, 4px 4px 0px #000000;
+    font-family: 'Nunito', sans-serif !important;
+    font-weight: 700 !important;
+    color: #1a252f;
+    border-bottom: 2px solid #bdc3c7;
+    padding-bottom: 5px;
 }
 
-/* Bottoni con stile "Vignetta" e ombra netta */
+/* Bottoni: stile "vignetta pulita" */
 .stButton>button {
-    border: 3px solid #000000 !important;
-    border-radius: 0px !important;
+    border: 1px solid #34495e !important;
+    border-radius: 4px !important;
     background-color: #ffffff !important;
-    color: #000000 !important;
-    font-weight: bold !important;
-    text-transform: uppercase;
-    box-shadow: 5px 5px 0px #000000 !important;
-    transition: all 0.1s ease !important;
+    color: #2c3e50 !important;
+    font-weight: 600 !important;
+    box-shadow: 2px 2px 0px #bdc3c7 !important;
+    transition: all 0.2s ease !important;
 }
 
-/* Effetto quando si clicca il bottone (si schiaccia) */
+/* Effetto clic sul bottone */
 .stButton>button:active {
-    transform: translate(3px, 3px) !important;
-    box-shadow: 2px 2px 0px #000000 !important;
+    transform: translate(2px, 2px) !important;
+    box-shadow: 0px 0px 0px #bdc3c7 !important;
 }
+
 .stButton>button:hover {
-    background-color: #f4f4f4 !important;
-    border-color: #000000 !important;
-    color: #000000 !important;
+    background-color: #f1f2f6 !important;
+    border-color: #1a252f !important;
 }
 
-/* Campi di input e tendine con bordi marcati */
+/* Input e tendine: minimalisti */
 .stTextInput>div>div>input, .stSelectbox>div>div>div, .stTextArea>div>div>textarea, .stDateInput>div>div>input {
-    border: 2px solid #000000 !important;
-    border-radius: 0px !important;
+    border: 1px solid #bdc3c7 !important;
+    border-radius: 4px !important;
     background-color: #ffffff;
+    color: #2c3e50 !important;
 }
 
-/* Riquadri, Container e Expander stile "Tavola di fumetto" */
+/* Expander e Container (I riquadri) come tavole pulite */
 [data-testid="stExpander"], [data-testid="stVerticalBlock"] > [style*="border"] {
-    border: 3px solid #000000 !important;
-    border-radius: 0px !important;
-    box-shadow: 6px 6px 0px #000000 !important;
+    border: 1px solid #bdc3c7 !important;
+    border-radius: 4px !important;
     background-color: #ffffff !important;
-    margin-bottom: 15px;
+    box-shadow: 2px 2px 0px #ecf0f1 !important;
 }
 
-/* Alert e Avvisi (Scadenze) */
+/* Alert più discreti (per le scadenze) */
 .stAlert {
-    border: 3px solid #000000 !important;
-    border-radius: 0px !important;
-    border-left-width: 12px !important;
-    box-shadow: 5px 5px 0px #000000 !important;
+    border: 1px solid #bdc3c7 !important;
+    border-radius: 4px !important;
+    border-left-width: 5px !important;
+    border-left-color: #34495e !important;
     background-color: #ffffff !important;
-    color: #000000 !important;
+    color: #2c3e50 !important;
 }
 </style>
 """
 st.markdown(manga_theme, unsafe_allow_html=True)
-# --- FINE STILE MANGA PROFESSIONALE ---
-
+# --- FINE STILE MINIMAL MANGA ---
 
 # Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
@@ -600,3 +597,4 @@ with col_f2:
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.info("✅ Michelone Approved")
+
