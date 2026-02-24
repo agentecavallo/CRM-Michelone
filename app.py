@@ -1,4 +1,3 @@
-app.py.txt
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -525,3 +524,4 @@ with col_f2:
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.info("✅ Michelone Approved")
+
