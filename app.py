@@ -11,6 +11,82 @@ from streamlit_js_eval import get_geolocation
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
+# --- INIZIO STILE MANGA PROFESSIONALE ---
+manga_theme = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Nunito:wght@400;700&display=swap');
+
+/* Sfondo generale con effetto "retino manga" (halftone) */
+.stApp {
+    background-color: #ffffff;
+    color: #000000;
+    font-family: 'Nunito', sans-serif;
+    background-image: radial-gradient(#d3d3d3 1px, transparent 1px);
+    background-size: 15px 15px;
+}
+
+/* Titoli in stile Action Manga */
+h1, h2, h3 {
+    font-family: 'Bangers', cursive !important;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 2px 2px 0px #ffffff, 4px 4px 0px #000000;
+}
+
+/* Bottoni con stile "Vignetta" e ombra netta */
+.stButton>button {
+    border: 3px solid #000000 !important;
+    border-radius: 0px !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-weight: bold !important;
+    text-transform: uppercase;
+    box-shadow: 5px 5px 0px #000000 !important;
+    transition: all 0.1s ease !important;
+}
+
+/* Effetto quando si clicca il bottone (si schiaccia) */
+.stButton>button:active {
+    transform: translate(3px, 3px) !important;
+    box-shadow: 2px 2px 0px #000000 !important;
+}
+.stButton>button:hover {
+    background-color: #f4f4f4 !important;
+    border-color: #000000 !important;
+    color: #000000 !important;
+}
+
+/* Campi di input e tendine con bordi marcati */
+.stTextInput>div>div>input, .stSelectbox>div>div>div, .stTextArea>div>div>textarea, .stDateInput>div>div>input {
+    border: 2px solid #000000 !important;
+    border-radius: 0px !important;
+    background-color: #ffffff;
+}
+
+/* Riquadri, Container e Expander stile "Tavola di fumetto" */
+[data-testid="stExpander"], [data-testid="stVerticalBlock"] > [style*="border"] {
+    border: 3px solid #000000 !important;
+    border-radius: 0px !important;
+    box-shadow: 6px 6px 0px #000000 !important;
+    background-color: #ffffff !important;
+    margin-bottom: 15px;
+}
+
+/* Alert e Avvisi (Scadenze) */
+.stAlert {
+    border: 3px solid #000000 !important;
+    border-radius: 0px !important;
+    border-left-width: 12px !important;
+    box-shadow: 5px 5px 0px #000000 !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+}
+</style>
+"""
+st.markdown(manga_theme, unsafe_allow_html=True)
+# --- FINE STILE MANGA PROFESSIONALE ---
+
+
 # Inizializzazione chiavi di stato
 if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
 if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
