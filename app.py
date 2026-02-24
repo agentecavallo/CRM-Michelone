@@ -1,3 +1,4 @@
+app.py.txt
 import streamlit as st
 import sqlite3
 import pandas as pd
@@ -428,4 +429,99 @@ if st.session_state.ricerca_attiva:
 
                     if row['latitudine'] and row['longitudine']:
                         mappa_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
-                        st.markdown(f"📍 [Apri in Maps]({mappa_url})
+                        st.markdown(f"📍 [Apri in Maps]({mappa_url})")
+                    
+                    cb_m, cb_d = st.columns([1, 1])
+                    cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", on_click=set_edit_mode, args=(row_id,))
+                    cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", on_click=ask_delete, args=(row_id,))
+                    
+                    # --- CONFERMA ELIMINAZIONE ---
+                    if st.session_state.get(key_conf, False):
+                        st.warning("⚠️ Confermi l'eliminazione definitiva?")
+                        cy, cn = st.columns(2)
+                        cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary", on_click=execute_delete_visita, args=(row_id,))
+                        cn.button("ANNULLA", key=f"no_{row_id}", on_click=cancel_delete, args=(row_id,))
+    else:
+        st.warning("Nessun risultato trovato.")
+
+# --- GESTIONE DATI E RIPRISTINO SICURO ---
+st.divider()
+with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        df_full = pd.read_sql_query("SELECT * FROM visite", conn)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_full.to_excel(writer, index=False)
+    
+    st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
+    
+    st.markdown("---")
+    st.write("📤 **RIPRISTINO DATI**")
+    st.caption("Carica un backup Excel. ATTENZIONE: i dati attuali verranno sostituiti!")
+    file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
+    
+    if file_caricato is not None:
+        if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
+            try:
+                df_ripristino = pd.read_excel(file_caricato)
+                if 'cliente' in df_ripristino.columns:
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        c = conn.cursor()
+                        c.execute("DROP TABLE IF EXISTS visite")
+                        conn.commit()
+                        
+                        c.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                      cliente TEXT, localita TEXT, provincia TEXT,
+                                      tipo_cliente TEXT, data TEXT, note TEXT,
+                                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
+                                      referente TEXT, telefono TEXT)''')
+                        conn.commit()
+                        
+                        df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                        
+                    st.success("✅ Database ripristinato correttamente! Riavvio...")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("❌ Il file non sembra un backup valido del CRM.")
+            except Exception as e:
+                st.error(f"Errore durante il ripristino: {e}")
+                
+    st.markdown("---")
+    st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
+    
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    if os.path.exists(cartella_backup):
+        files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
+        if files_backup:
+            files_backup.sort(reverse=True)
+            file_selezionato = st.selectbox("Seleziona il backup automatico (Ne viene salvato solo uno!):", files_backup)
+            
+            with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
+                st.download_button(
+                    label=f"⬇️ SCARICA {file_selezionato}",
+                    data=f,
+                    file_name=file_selezionato,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Nessun backup automatico generato finora.")
+    else:
+        st.info("La cartella dei backup verrà creata al primo salvataggio.")
+
+# --- LOGO FINALE ---
+st.write("") 
+st.divider() 
+
+col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
+
+with col_f2:
+    try:
+        st.image("logo.jpg", use_container_width=True)
+        st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+    except Exception:
+        st.info("✅ Michelone Approved")
