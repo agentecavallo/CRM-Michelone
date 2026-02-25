@@ -1,547 +1,526 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
 import requests
-from io import BytesIO
 import os
-import tempfile
-from fpdf import FPDF
-from datetime import datetime
+import time
+from datetime import datetime, timedelta
+from io import BytesIO
+from streamlit_js_eval import get_geolocation
 
-# Configurazione della pagina
-st.set_page_config(page_title="Generatore Preventivi", layout="wide", page_icon="📄")
+# --- 1. CONFIGURAZIONE E DATABASE ---
+st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-# --- TRUCCHETTO CSS PER CAMPO E BOTTONI VERDI ---
-st.markdown("""
-<style>
-/* Sfondo verde chiaro per i campi di testo */
-div[data-testid="stTextInput"] input {
-    background-color: #e8f5e9 !important; 
-    border: 2px solid #4CAF50 !important; 
-    color: #000000 !important;
-    font-weight: bold;
-}
-/* Colore verde per i bottoni "Primari" (Aggiungi, Prepara PDF, Scarica) */
-button[kind="primary"] {
-    background-color: #4CAF50 !important;
-    color: white !important;
-    border: none !important;
-}
-button[kind="primary"]:hover {
-    background-color: #45a049 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+# Inizializzazione chiavi di stato
+if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
+if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
+if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
+if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
-# --- INIZIALIZZAZIONE DELLA MEMORIA ---
-if 'carrello' not in st.session_state:
-    st.session_state['carrello'] = []
+def inizializza_db():
+    with sqlite3.connect('crm_mobile.db') as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS visite 
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                      cliente TEXT, localita TEXT, provincia TEXT,
+                      tipo_cliente TEXT, data TEXT, note TEXT,
+                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                      latitudine TEXT, longitudine TEXT,
+                      referente TEXT, telefono TEXT)''')
+        
+        # --- MIGRAZIONI AUTOMATICHE PER VECCHI DATABASE ---
+        try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
+        except: pass 
+        
+        try: c.execute("ALTER TABLE visite ADD COLUMN referente TEXT DEFAULT ''")
+        except: pass
+        
+        try: c.execute("ALTER TABLE visite ADD COLUMN telefono TEXT DEFAULT ''")
+        except: pass
+            
+        conn.commit()
 
-if 'espositori_selezionati' not in st.session_state:
-    st.session_state['espositori_selezionati'] = []
+inizializza_db()
 
-# --- CARICAMENTO DATI ---
-@st.cache_data
-def carica_dati(path, tipo="base"):
-    if not os.path.exists(path):
-        return None
-    try:
-        data = pd.read_excel(path)
-        if tipo == "atg":
-            # MODIFICA FATTA QUI: Ora legge 6 colonne (fino alla F) e assegna l'ultima all'IMMAGINE
-            data = data.iloc[:, :6]
-            # Assicurati che l'Excel abbia 6 colonne per l'ATG: le prime 5 classiche + la 6^ con il link
-            data.columns = ['ARTICOLO', 'RIVESTIMENTO', 'QTA_BOX', 'RANGE_TAGLIE', 'LISTINO', 'IMMAGINE']
-        else:
-            data.columns = [str(c).strip().upper() for c in data.columns]
-        return data
-    except Exception as e:
-        st.error(f"Errore nel caricamento del file {path}: {e}")
-        return None
+# --- FUNZIONE CALCOLO GIORNI ---
+def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
+    # 0 = Lunedì, 4 = Venerdì
+    giorni_mancanti = giorno_obiettivo - data_partenza.weekday()
+    if giorni_mancanti <= 0:
+        giorni_mancanti += 7
+    return (data_partenza + timedelta(days=giorni_mancanti)).strftime("%Y-%m-%d")
 
-df_base = carica_dati('Listino_agente.xlsx', "base")
-df_atg = carica_dati('Listino_ATG.xlsx', "atg")
+# --- 2. FUNZIONI DI SUPPORTO E CALLBACKS ---
+def controllo_backup_automatico():
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    if not os.path.exists(cartella_backup):
+        os.makedirs(cartella_backup)
+    
+    now = datetime.now()
+    if now.hour >= 7:
+        today_str = now.strftime('%Y-%m-%d')
+        backup_di_oggi_esiste = False
+        
+        for file in os.listdir(cartella_backup):
+            if file.endswith('.xlsx') and today_str in file:
+                backup_di_oggi_esiste = True
+                break
+                
+        if not backup_di_oggi_esiste:
+            with sqlite3.connect('crm_mobile.db') as conn:
+                try:
+                    df = pd.read_sql_query("SELECT * FROM visite ORDER BY id DESC", conn)
+                    if not df.empty:
+                        for file in os.listdir(cartella_backup):
+                            if file.endswith('.xlsx'):
+                                os.remove(os.path.join(cartella_backup, file))
+                                
+                        nome_file = f"Backup_Auto_{today_str}.xlsx"
+                        df.to_excel(os.path.join(cartella_backup, nome_file), index=False)
+                        st.toast(f"🛡️ Backup Giornaliero ({today_str}) Eseguito!", icon="✅")
+                except:
+                    pass
 
-# =========================================================
-# --- SIDEBAR: DATI CLIENTE, SCONTI, NOTE E ESPOSITORI ---
-# =========================================================
-st.sidebar.header("📋 Dati Documento")
-nome_cliente = st.sidebar.text_input("Nome del Cliente:", placeholder="Ragione Sociale...")
-nome_referente = st.sidebar.text_input("Nome Referente:", placeholder="Mario Rossi...")
+controllo_backup_automatico()
 
-st.sidebar.divider()
+def applica_dati_gps():
+    if 'gps_temp' in st.session_state:
+        dati = st.session_state['gps_temp']
+        st.session_state.localita_key = dati['citta']
+        st.session_state.prov_key = dati['prov']
+        st.session_state.lat_val = dati['lat']
+        st.session_state.lon_val = dati['lon']
+        del st.session_state['gps_temp']
 
-# Sconti Base
-st.sidebar.header("💰 Sconto Base")
-col_sc1, col_sc2, col_sc3 = st.sidebar.columns(3)
-sc1 = col_sc1.number_input("Sc. 1 %", 0.0, 100.0, 40.0, key="sc_base1")
-sc2 = col_sc2.number_input("Sc. 2 %", 0.0, 100.0, 10.0, key="sc_base2")
-sc3 = col_sc3.number_input("Sc. 3 %", 0.0, 100.0, 0.0, key="sc_base3")
-
-st.sidebar.divider()
-
-# Sconti ATG
-st.sidebar.header("🧤 Sconto ATG")
-col_atg1, col_atg2, col_atg3 = st.sidebar.columns(3)
-sc_atg1 = col_atg1.number_input("Sc. ATG 1 %", 0.0, 100.0, 40.0, key="sc_atg1")
-sc_atg2 = col_atg2.number_input("Sc. ATG 2 %", 0.0, 100.0, 10.0, key="sc_atg2")
-sc_atg3 = col_atg3.number_input("Sc. ATG 3 %", 0.0, 100.0, 0.0, key="sc_atg3")
-
-st.sidebar.divider()
-
-# --- SEZIONE SIDEBAR: PULSANTI ESPOSITORI MULTIPLI ---
-st.sidebar.header("🎁 Espositori Omaggio")
-st.sidebar.write("Clicca per aggiungere gli espositori al PDF:")
-
-col_esp1, col_esp2 = st.sidebar.columns(2)
-col_esp3, col_esp4 = st.sidebar.columns(2)
-
-def seleziona_espositore(nome_file_img):
-    if nome_file_img not in st.session_state['espositori_selezionati']:
-        st.session_state['espositori_selezionati'].append(nome_file_img)
-        st.toast(f"Aggiunto: {nome_file_img.replace('.jpg','')}", icon="✅")
+def salva_visita():
+    s = st.session_state
+    cliente = s.get('cliente_key', '').strip()
+    note = s.get('note_key', '').strip()
+    tipo = s.get('tipo_key', 'Prospect')
+    referente = s.get('referente_key', '').strip()
+    telefono = s.get('telefono_key', '').strip()
+    
+    if cliente and note:
+        with sqlite3.connect('crm_mobile.db') as conn:
+            c = conn.cursor()
+            data_visita_fmt = s.data_key.strftime("%d/%m/%Y")
+            data_ord = s.data_key.strftime("%Y-%m-%d")
+            
+            scelta = s.get('fup_opt', 'No')
+            data_fup = ""
+            
+            if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
+                giorni = int(scelta.split()[0])
+                data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
+            elif scelta == "Prox. Lunedì":
+                data_fup = calcola_prossimo_giorno(s.data_key, 0)
+            elif scelta == "Prox. Venerdì":
+                data_fup = calcola_prossimo_giorno(s.data_key, 4)
+            
+            c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
+                         data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
+                         referente, telefono) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""", 
+                      (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo, 
+                       data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
+                       s.lat_val, s.lon_val, referente, telefono))
+            conn.commit()
+        
+        # Reset dei campi
+        st.session_state.cliente_key = ""
+        st.session_state.localita_key = ""
+        st.session_state.prov_key = ""
+        st.session_state.note_key = ""
+        st.session_state.lat_val = ""
+        st.session_state.lon_val = ""
+        st.session_state.referente_key = ""
+        st.session_state.telefono_key = ""
+        st.session_state.fup_opt = "No"
+        
+        st.toast("✅ Visita salvata!", icon="💾")
     else:
-        st.toast("Espositore già aggiunto!", icon="⚠️")
+        st.error("⚠️ Inserisci almeno Cliente e Note!")
 
-with col_esp1:
-    if st.button("ATG Banco", use_container_width=True):
-        seleziona_espositore("ATG banco.jpg")
-with col_esp2:
-    if st.button("ATG Terra", use_container_width=True):
-        seleziona_espositore("ATG terra.jpg")
-with col_esp3:
-    if st.button("Base Banco", use_container_width=True):
-        seleziona_espositore("Base banco.jpg")
-with col_esp4:
-    if st.button("Base Terra", use_container_width=True):
-        seleziona_espositore("BASE terra.jpg")
 
-if st.session_state['espositori_selezionati']:
-    st.sidebar.markdown("**Espositori inclusi nel preventivo:**")
+# --- CALLBACKS PER I PULSANTI IN ARCHIVIO E SCADENZE ---
+def posticipa_fup(id_val):
+    giorni = st.session_state.get('temp_giorni', 0)
+    nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
+        conn.commit()
+
+def set_fup_prox(id_val, giorno_settimana):
+    nuova_data = calcola_prossimo_giorno(datetime.now(), giorno_settimana)
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
+        conn.commit()
+
+def azzera_fup(id_val):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET data_followup = '' WHERE id = ?", (id_val,))
+        conn.commit()
+
+def set_edit_mode(id_val): st.session_state.edit_mode_id = id_val
+def cancel_edit(): st.session_state.edit_mode_id = None
+def ask_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = True
+def cancel_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = False
+
+def execute_save_modifica(id_val):
+    s = st.session_state
+    new_cli = s.get(f"e_cli_{id_val}", "")
+    new_tipo = s.get(f"e_tp_{id_val}", "Prospect")
+    new_loc = s.get(f"e_loc_{id_val}", "")
+    new_prov = s.get(f"e_prov_{id_val}", "")
+    new_note = s.get(f"e_note_{id_val}", "")
+    new_ag = s.get(f"e_ag_{id_val}", "HSE")
+    new_ref = s.get(f"e_ref_{id_val}", "")
+    new_tel = s.get(f"e_tel_{id_val}", "")
     
-    nomi_belli = {
-        "ATG banco.jpg": "Espositore ATG girevole da Banco",
-        "ATG terra.jpg": "Espositore ATG in Metallo da Terra",
-        "Base banco.jpg": "Espositore BASE da Banco 1 Modello",
-        "BASE terra.jpg": "Espositore BASE da terra 7 modelli"
-    }
+    new_fup = ""
+    if s.get(f"e_chk_{id_val}", False):
+        dt = s.get(f"e_dt_{id_val}")
+        if dt: new_fup = dt.strftime("%Y-%m-%d")
+        
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=? WHERE id=?""",
+                     (new_cli, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_ag, new_fup, new_ref, new_tel, id_val))
+        conn.commit()
+    st.session_state.edit_mode_id = None
+
+def execute_delete_visita(id_val):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("DELETE FROM visite WHERE id = ?", (id_val,))
+        conn.commit()
+    st.session_state[f"confirm_del_{id_val}"] = False
+
+def toggle_crm_copy(id_val):
+    new_val = 1 if st.session_state.get(f"chk_crm_{id_val}", False) else 0
+    with sqlite3.connect('crm_mobile.db') as conn:
+        conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (new_val, id_val))
+        conn.commit()
+
+
+# --- 3. INTERFACCIA UTENTE ---
+st.title("💼 CRM Michelone")
+
+with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False): 
+    st.text_input("Nome Cliente", key="cliente_key")
+    st.selectbox("Tipo Cliente", ["Cliente", "Prospect"], key="tipo_key")
     
-    for esp in st.session_state['espositori_selezionati']:
-        st.sidebar.success(f"✅ {nomi_belli.get(esp, esp)}")
-        
-    if st.sidebar.button("❌ Rimuovi Tutti gli Espositori"):
-        st.session_state['espositori_selezionati'] = []
-        st.rerun()
-
-st.sidebar.divider()
-
-# --- CAMPI: CONDIZIONI COMMERCIALI CON VALORI DI DEFAULT ---
-st.sidebar.header("⚖️ Condizioni Commerciali")
-campo_pagamento = st.sidebar.text_input("Pagamento:", value="Ri.Ba. 60 giorni")
-campo_trasporto = st.sidebar.text_input("Trasporto:", value="P.to Franco")
-campo_validita = st.sidebar.text_input("Validità Offerta:", value="30.06.2026")
-
-st.sidebar.divider()
-
-note_preventivo = st.sidebar.text_area("📝 Note Aggiuntive (verranno inserite a fine PDF):", height=200, placeholder="Scrivi qui le tue note...")
-
-# =========================================================
-# --- PAGINA PRINCIPALE: RICERCA UNIFICATA ---
-# =========================================================
-st.title("📄 OFFERTE & ORDINI")
-
-if df_base is None and df_atg is None:
-    st.warning("⚠️ Nessun file Excel trovato. Assicurati che i file 'Listino_agente.xlsx' e 'Listino_ATG.xlsx' siano nella cartella.")
-else:
-    st.markdown("### 🟢 :green[Ricerca Articolo]")
-    ricerca = st.text_input("Inserisci nome modello:", placeholder="Cerca su tutto il catalogo (Base o ATG)...").upper()
-
-    if ricerca:
-        # Prepariamo una lista dove metteremo tutti i risultati trovati
-        risultati_trovati = []
-        
-        # Cerchiamo nel listino base
-        if df_base is not None:
-            r_base = df_base[df_base['ARTICOLO'].astype(str).str.upper().str.contains(ricerca, na=False)].copy()
-            if not r_base.empty:
-                r_base['CATALOGO_PROVENIENZA'] = "Listino Base"
-                risultati_trovati.append(r_base)
+    col_ref, col_tel = st.columns(2)
+    with col_ref: st.text_input("Referente", key="referente_key")
+    with col_tel: st.text_input("Telefono", key="telefono_key")
+    
+    st.markdown("---")
+    
+    # --- GPS SPOSTATO QUI (PRIMA DEI CAMPI DI TESTO) ---
+    loc_data = get_geolocation()
+    if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
+        if loc_data and 'coords' in loc_data:
+            try:
+                lat, lon = loc_data['coords']['latitude'], loc_data['coords']['longitude']
+                headers = {'User-Agent': 'CRM_Michelone_App/1.0'}
+                r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", headers=headers).json()
+                a = r.get('address', {})
+                citta = a.get('city', a.get('town', a.get('village', '')))
                 
-        # Cerchiamo nel listino ATG
-        if df_atg is not None:
-            r_atg = df_atg[df_atg['ARTICOLO'].astype(str).str.upper().str.contains(ricerca, na=False)].copy()
-            if not r_atg.empty:
-                r_atg['CATALOGO_PROVENIENZA'] = "Listino ATG"
-                risultati_trovati.append(r_atg)
-        
-        # Se abbiamo trovato qualcosa uniamo i risultati
-        if risultati_trovati:
-            risultato_completo = pd.concat(risultati_trovati, ignore_index=True)
+                prov_full = a.get('county', '')
+                if prov_full and ("Roma" in prov_full or "Rome" in prov_full):
+                    prov_sigla = "RM"
+                else:
+                    prov_sigla = prov_full[:2].upper() if prov_full else "??"
+                
+                st.session_state['gps_temp'] = {'citta': citta.upper() if citta else "", 'prov': prov_sigla, 'lat': str(lat), 'lon': str(lon)}
+            except: st.warning("Impossibile recuperare i dettagli dell'indirizzo.")
+        else: st.warning("⚠️ Consenti la geolocalizzazione nel browser.")
+
+    if 'gps_temp' in st.session_state:
+        d = st.session_state['gps_temp']
+        st.info(f"🛰️ Trovato: **{d['citta']} ({d['prov']})**")
+        c_yes, c_no = st.columns(2)
+        with c_yes: st.button("✅ INSERISCI", on_click=applica_dati_gps, use_container_width=True)
+        with c_no: 
+            if st.button("❌ ANNULLA", use_container_width=True): 
+                del st.session_state['gps_temp']
+                st.rerun()
+
+    # --- CAMPI LOCALITÀ E PROVINCIA SPOSTATI QUI SOTTO ---
+    col_l, col_p = st.columns([3, 1]) 
+    with col_l: st.text_input("Località", key="localita_key")
+    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
+
+    st.markdown("---")
+    c1, c2 = st.columns(2)
+    with c1: st.date_input("Data", datetime.now(), key="data_key")
+    with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
+    
+    st.text_area("Note", key="note_key", height=250)
+    
+    st.write("📅 **Pianifica Ricontatto:**")
+    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+    st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
+
+st.divider()
+
+# --- ALERT SCADENZE ---
+with sqlite3.connect('crm_mobile.db') as conn:
+    oggi = datetime.now().strftime("%Y-%m-%d")
+    df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
+
+if not df_scadenze.empty:
+    st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
+    for _, row in df_scadenze.iterrows():
+        try:
+            row_id = int(float(row['id']))
+        except (ValueError, TypeError):
+            continue
+
+        try:
+            d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
+            d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
+            giorni_ritardo = (d_oggi - d_scad).days
+            msg_scadenza = "Scade OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
+        except: msg_scadenza = "Scaduto"
+
+        with st.container(border=True):
+            tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
+            st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
+            st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            scelta = st.selectbox("Seleziona l'articolo:", risultato_completo['ARTICOLO'].unique())
-            d = risultato_completo[risultato_completo['ARTICOLO'] == scelta].iloc[0]
-            
-            catalogo_selezionato = d['CATALOGO_PROVENIENZA']
-            
-            # --- NOVITÀ: RECUPERO LA NORMATIVA DALLA COLONNA 8 (INDICE 7) DEL LISTINO BASE ---
-            normativa_articolo = ""
-            if catalogo_selezionato == "Listino Base" and len(d) >= 8:
-                valore_normativa = str(d.iloc[7]).strip()
-                if valore_normativa.lower() != "nan" and valore_normativa != "":
-                    normativa_articolo = valore_normativa
-            
-            # Applichiamo sconti e taglie in base al catalogo di provenienza
-            if catalogo_selezionato == "Listino Base":
-                sconto_applicato = (sc1, sc2, sc3)
-                taglie_disponibili = list(range(35, 51))
-            else:
-                sconto_applicato = (sc_atg1, sc_atg2, sc_atg3)
-                taglie_disponibili = [6, 7, 8, 9, 10, 11, 12]
-            
-            st.divider()
-            c1, c2 = st.columns([2, 1])
-            
+            c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
-                st.subheader(f"Modello: {d['ARTICOLO']}")
-                st.caption(f"📍 Trovato in: **{catalogo_selezionato}**") 
-                
-                # Mostra la normativa a schermo se esiste
-                if normativa_articolo:
-                    st.caption(f"⚖️ **Normativa:** {normativa_articolo}")
-                
-                if catalogo_selezionato == "Listino ATG":
-                    st.caption(f"**Rivestimento:** {d.get('RIVESTIMENTO', '-')} | **Q.tà Box:** {d.get('QTA_BOX', '-')} | **Range Taglie:** {d.get('RANGE_TAGLIE', '-')}")
-                
-                prezzo_listino = float(d['LISTINO'])
-                s1, s2, s3 = sconto_applicato
-                prezzo_netto = prezzo_listino * (1 - s1/100) * (1 - s2/100) * (1 - s3/100)
-                st.markdown(f"### Prezzo Netto: :green[{prezzo_netto:.2f} €]")
-                
-                st.divider()
-                
-                modalita = st.radio(
-                    "Scegli la modalità di inserimento:", 
-                    ["Specifica Taglie", "Solo Modello/Vetrina (Senza taglie)"], 
-                    horizontal=True,
-                    key="mod_inserimento"
-                )
-                
-                st.write("")
-                
-                if modalita == "Specifica Taglie":
-                    st.write("**Quantità per Taglia:**")
-                    
-                    if st.button("🔄 Azzera Campi"):
-                        for t in taglie_disponibili:
-                            st.session_state[f"qta_{t}_{catalogo_selezionato}"] = 0
-                        st.rerun()
-
-                    quantita_taglie = {}
-                    
-                    for i in range(0, len(taglie_disponibili), 8):
-                        chunk = taglie_disponibili[i:i+8]
-                        cols = st.columns(8)
-                        for j, t in enumerate(chunk):
-                            with cols[j]:
-                                key = f"qta_{t}_{catalogo_selezionato}"
-                                if key not in st.session_state: st.session_state[key] = 0
-                                quantita_taglie[t] = st.number_input(str(t), min_value=0, step=1, key=key)
-
-                    st.write("")
-                    if st.button("🛒 Aggiungi al Preventivo", use_container_width=True, type="primary"):
-                        aggiunti = 0
-                        for t, q in quantita_taglie.items():
-                            if q > 0:
-                                st.session_state['carrello'].append({
-                                    "Articolo": d['ARTICOLO'], "Taglia": t, "Quantità": q,
-                                    "Netto U.": f"{prezzo_netto:.2f} €", "Totale Riga": prezzo_netto * q,
-                                    "Immagine": str(d.get('IMMAGINE', '')).strip(),
-                                    "Normativa": normativa_articolo # Salviamo la normativa nel carrello
-                                })
-                                aggiunti += 1
-                        if aggiunti > 0: 
-                            st.success("Aggiunto con successo!")
-                            st.rerun()
-                        else: 
-                            st.warning("Inserisci almeno una quantità!")
-                
-                else:
-                    st.info("💡 In questa modalità puoi inserire l'articolo senza specificare le taglie.")
-                    qta_generica = st.number_input("Quantità generica totale:", min_value=0, step=1, value=0, key="qta_gen")
-                    
-                    if st.button("🛒 Aggiungi Modello", use_container_width=True, type="primary"):
-                        st.session_state['carrello'].append({
-                            "Articolo": d['ARTICOLO'], 
-                            "Taglia": "-", 
-                            "Quantità": qta_generica,
-                            "Netto U.": f"{prezzo_netto:.2f} €", 
-                            "Totale Riga": prezzo_netto * qta_generica,
-                            "Immagine": str(d.get('IMMAGINE', '')).strip(),
-                            "Normativa": normativa_articolo # Salviamo la normativa nel carrello
-                        })
-                        st.success("Modello aggiunto al preventivo!")
-                        st.rerun()
-                    
+                if st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True):
+                    st.session_state.temp_giorni = 1
+                    posticipa_fup(row_id)
+                    st.rerun()
             with c2:
-                url = str(d.get('IMMAGINE', '')).strip()
-                # Se c'è un link (sia per Base che per ATG) prova a caricarlo
-                if url.startswith('http'):
-                    try:
-                        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
-                        if r.status_code == 200:
-                            st.image(BytesIO(r.content), caption=d['ARTICOLO'], use_container_width=True)
-                        else:
-                            st.warning("Immagine non trovata (Errore dal sito).")
-                    except Exception: 
-                        st.warning("Impossibile caricare l'immagine dal link fornito.")
-                # Se non c'è link ed è ATG, mostra il messaggio di default
-                elif catalogo_selezionato == "Listino ATG":
-                    st.markdown("### 🧤 **Prodotto ATG**")
-                    st.write("*(Nessuna immagine nel listino per questo articolo)*")
-                else:
-                    st.write("Immagine non disponibile")
-        else:
-            st.warning("Nessun articolo trovato con questo nome. Riprova con una parola diversa!")
+                if st.button("+7 📅", key=f"p7_{row_id}", use_container_width=True):
+                    st.session_state.temp_giorni = 7
+                    posticipa_fup(row_id)
+                    st.rerun()
+            with c3:
+                st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
+                    
+            c4, c5 = st.columns(2)
+            with c4:
+                st.button("➡️ Prox. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
+            with c5:
+                st.button("➡️ Prox. Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
 
-# =========================================================
-# --- RIEPILOGO E PDF ---
-# =========================================================
-if st.session_state['carrello']:
-    st.divider()
-    st.header("🛒 Riepilogo")
-    df_c = pd.DataFrame(st.session_state['carrello'])
+# --- RICERCA E ARCHIVIO ---
+st.subheader("🔍 Archivio Visite")
+
+f1, f2, f3 = st.columns([1.5, 1, 1])
+t_ricerca = f1.text_input("Cerca Cliente o Città")
+
+oggi_dt = datetime.today().date()
+periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
+
+f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+
+f4, f5, f6 = st.columns([1, 1, 1])
+f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
+f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
+f_referente = f6.selectbox("Filtra Referente", ["Tutti", "Con Referente", "Senza Referente"])
+
+if st.button("🔎 CERCA VISITE", use_container_width=True):
+    st.session_state.ricerca_attiva = True
+    st.session_state.edit_mode_id = None 
+
+if st.session_state.ricerca_attiva:
+    with sqlite3.connect('crm_mobile.db') as conn:
+        df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
-    st.table(df_c[["Articolo", "Taglia", "Quantità", "Netto U.", "Totale Riga"]])
-    
-    totale_generale = df_c["Totale Riga"].sum()
-    st.markdown(f"### Totale Generale: **{totale_generale:.2f} €**")
-    
-    c_p1, c_p2 = st.columns(2)
-    with c_p1:
-        if st.button("🗑️ Svuota Tutto", use_container_width=True):
-            st.session_state['carrello'] = []
+    if t_ricerca:
+        df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
+    if f_agente != "Tutti":
+        df = df[df['agente'] == f_agente]
+    if f_tipo != "Tutti":
+        df = df[df['tipo_cliente'] == f_tipo]
+    if f_stato_crm == "Da Caricare":
+        df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
+    elif f_stato_crm == "Caricati":
+        df = df[df['copiato_crm'] == 1]
+    if f_referente == "Con Referente":
+        df = df[(df['referente'].notnull()) & (df['referente'].str.strip() != '')]
+    elif f_referente == "Senza Referente":
+        df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
+
+    if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
+         df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
+
+    if not df.empty:
+        st.success(f"Trovate {len(df)} visite.")
+        if st.button("❌ Chiudi Ricerca"):
+            st.session_state.ricerca_attiva = False
             st.rerun()
+
+        for _, row in df.iterrows():
+            try:
+                row_id = int(float(row['id']))
+            except (ValueError, TypeError):
+                continue
+                
+            icona_crm = "✅" if row.get('copiato_crm') == 1 else ""
+            badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
             
-    with c_p2:
-        if st.button("📄 Prepara PDF per il Download", use_container_width=True, type="primary"):
-            raggruppo = {}
-            for r in st.session_state['carrello']:
-                art = r["Articolo"]
-                if art not in raggruppo:
-                    # Passiamo anche la normativa al PDF
-                    raggruppo[art] = {
-                        "T": [], 
-                        "Tot": 0, 
-                        "Img": r["Immagine"], 
-                        "Netto": r["Netto U."],
-                        "Normativa": r.get("Normativa", "")
-                    }
-                
-                if r["Quantità"] > 0:
-                    if r["Taglia"] == "-":
-                        raggruppo[art]["T"].append(f"Q.tà: {r['Quantità']}pz")
-                    else:
-                        raggruppo[art]["T"].append(f"Tg{r['Taglia']}: {r['Quantità']}pz")
-                
-                raggruppo[art]["Tot"] += r["Totale Riga"]
-
-            class PDF(FPDF):
-                def header(self):
-                    # Logo
-                    for f in ["logo.png", "logo.jpg", "logo.jpeg"]:
-                        if os.path.exists(f):
-                            self.image(f, 10, 8, 60)
-                            break
-                            
-                    # Spett.le
-                    self.set_font("helvetica", "", 12)
-                    self.set_xy(100, 15)
-                    self.cell(100, 6, "Spett.le", align="R", ln=1)
-                    
-                    # Nome Cliente
-                    self.set_font("helvetica", "B", 20) 
-                    self.set_x(100) 
-                    testo_nome = nome_cliente if nome_cliente else "Cliente"
-                    self.cell(100, 8, testo_nome, align="R", ln=1)
-                    
-                    # Nome Referente
-                    if nome_referente:
-                        self.set_font("helvetica", "", 15) 
-                        self.set_x(100)
-                        self.cell(100, 7, f"c.a. {nome_referente}", align="R", ln=1)
-                    
-                    self.ln(20) 
-
-            pdf = PDF()
-            pdf.add_page()
+            key_conf = f"confirm_del_{row_id}"
+            tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(key_conf, False)
             
-            # --- CICLO PRODOTTI ---
-            for art, dati in raggruppo.items():
-                y_inizio = pdf.get_y()
-                if y_inizio > 230:
-                    pdf.add_page()
-                    y_inizio = pdf.get_y()
+            with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
+                
+                # --- MODALITÀ MODIFICA (ARCHIVIO) ---
+                if st.session_state.edit_mode_id == row_id:
+                    st.info("✏️ Modifica Dati")
+                    st.text_input("Cliente", value=str(row['cliente'] or ""), key=f"e_cli_{row_id}")
+                    
+                    lista_tp = ["Prospect", "Cliente"]
+                    try: idx_tp = lista_tp.index(row['tipo_cliente'])
+                    except: idx_tp = 0
+                    st.selectbox("Stato", lista_tp, index=idx_tp, key=f"e_tp_{row_id}")
 
-                pdf.set_xy(10, y_inizio)
-                pdf.set_font("helvetica", "B", 12)
-                pdf.cell(135, 7, f"Modello: {art}", ln=1)
+                    c_rt1, c_rt2 = st.columns(2)
+                    with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
+                    with c_rt2: st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
+
+                    lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
+                    try: idx_ag = lista_agenti.index(row['agente'])
+                    except: idx_ag = 0
+                    st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row_id}")
+                    
+                    st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row_id}")
+                    st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row_id}")
+                    
+                    st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
+                    
+                    fup_attuale = row['data_followup']
+                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
+                    attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}")
+                    if attiva_fup:
+                        st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row_id}")
+
+                    cs, cc = st.columns(2)
+                    cs.button("💾 SALVA", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
+                    cc.button("❌ ANNULLA", key=f"canc_{row_id}", use_container_width=True, on_click=cancel_edit)
                 
-                # --- NOVITÀ: STAMPA DELLA NORMATIVA SOTTO IL NOME MODELLO ---
-                if dati.get("Normativa"):
-                    pdf.set_font("helvetica", "I", 9) # Font in corsivo, un po' più piccolo
-                    pdf.cell(135, 5, f"Normativa: {dati['Normativa']}", ln=1)
-                
-                pdf.set_font("helvetica", "", 10)
-                pdf.cell(135, 6, f"Prezzo Netto: {dati['Netto'].replace('€', 'Euro')}", ln=1)
-                
-                if dati["T"]:
-                    pdf.set_font("helvetica", "I", 9)
-                    pdf.multi_cell(135, 5, " | ".join(dati["T"]))
+                # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
-                    pdf.set_font("helvetica", "I", 9)
-                    pdf.cell(135, 5, "Proposta Modello (Nessuna quantità specificata)", ln=1)
-                
-                pdf.ln(2) 
-                
-                if dati['Tot'] > 0:
-                    pdf.set_x(10) 
-                    pdf.set_font("helvetica", "B", 10)
-                    pdf.cell(135, 6, f"Subtotale: {dati['Tot']:.2f} Euro", ln=1)
-                
-                y_fine_testo = pdf.get_y()
-
-                foto_inserita = False
-                y_fine_immagine = y_inizio + 10 
-                
-                if dati["Img"].startswith("http"):
-                    try:
-                        res = requests.get(dati["Img"], headers={'User-Agent': 'Mozilla/5.0'}, timeout=3)
-                        if res.status_code == 200:
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-                                tmp.write(res.content)
-                                pdf.image(tmp.name, x=155, y=y_inizio, w=35)
-                            os.remove(tmp.name)
-                            foto_inserita = True
-                            y_fine_immagine = y_inizio + 35 
-                    except: 
-                        pass
-                
-                if not foto_inserita:
-                    pdf.set_xy(155, y_inizio + 10)
-                    pdf.set_font("helvetica", "I", 9)
-                    pdf.set_text_color(150, 150, 150)
-                    pdf.cell(35, 10, "Foto non disponibile", align="C")
-                    pdf.set_text_color(0, 0, 0)
-                    y_fine_immagine = y_inizio + 20
-                
-                y_fine_blocco = max(y_fine_testo, y_fine_immagine)
-                pdf.set_y(y_fine_blocco + 5)
-                pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-                pdf.ln(5)
-
-            # --- TOTALE GENERALE ---
-            pdf.ln(5)
-            if totale_generale > 0:
-                pdf.set_font("helvetica", "B", 14)
-                pdf.cell(0, 10, f"TOTALE GENERALE: {totale_generale:.2f} Euro", align="R")
-                pdf.ln(10)
-
-            # --- ESPOSITORI ---
-            if st.session_state['espositori_selezionati']:
-                pdf.ln(5)
-                nomi_espositori_pdf = {
-                    "ATG banco.jpg": "Espositore ATG girevole da Banco",
-                    "ATG terra.jpg": "Espositore ATG in Metallo da Terra",
-                    "Base banco.jpg": "Espositore BASE da Banco 1 Modello",
-                    "BASE terra.jpg": "Espositore BASE da terra 7 modelli"
-                }
-
-                for esp_file in st.session_state['espositori_selezionati']:
-                    if pdf.get_y() > 220: 
-                        pdf.add_page()
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
                     
-                    current_y_esp = pdf.get_y()
-                    descrizione_espositore = nomi_espositori_pdf.get(esp_file, esp_file.replace('.jpg', '').upper())
+                    ref_val = row.get('referente', '')
+                    tel_val = row.get('telefono', '')
+                    if ref_val or tel_val:
+                        st.write(f"👤 **Referente:** {ref_val} | 📞 **Tel:** {tel_val}")
+                        
+                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
+                    
+                    st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row_id}")
+                    
+                    is_copied = True if row.get('copiato_crm') == 1 else False
+                    st.checkbox("✅ Salvato su CRM", value=is_copied, key=f"chk_crm_{row_id}", on_change=toggle_crm_copy, args=(row_id,))
 
-                    if os.path.exists(esp_file):
-                        pdf.image(esp_file, x=10, y=current_y_esp, w=35)
-                    else:
-                        pdf.set_xy(10, current_y_esp)
-                        pdf.set_font("helvetica", "I", 10)
-                        pdf.set_text_color(200,0,0)
-                        pdf.cell(35, 10, f"Foto Mancante", ln=1)
-                        pdf.set_text_color(0,0,0)
+                    if row['data_followup']:
+                        try:
+                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                            st.write(f"📅 **Ricontatto:** {data_fup_it}")
+                        except: pass
 
-                    pdf.set_xy(50, current_y_esp + 10) 
-                    pdf.set_font("helvetica", "B", 14)
-                    pdf.set_text_color(0, 100, 0) 
-                    testo_omaggio = f"Modello: {descrizione_espositore}\nEspositore in OMAGGIO con questo ordine!"
-                    pdf.multi_cell(0, 7, testo_omaggio)
-                    pdf.set_text_color(0, 0, 0) 
-                    pdf.set_y(current_y_esp + 45) 
+                    if row['latitudine'] and row['longitudine']:
+                        mappa_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
+                        st.markdown(f"📍 [Apri in Maps]({mappa_url})")
+                    
+                    cb_m, cb_d = st.columns([1, 1])
+                    cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", on_click=set_edit_mode, args=(row_id,))
+                    cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", on_click=ask_delete, args=(row_id,))
+                    
+                    # --- CONFERMA ELIMINAZIONE ---
+                    if st.session_state.get(key_conf, False):
+                        st.warning("⚠️ Confermi l'eliminazione definitiva?")
+                        cy, cn = st.columns(2)
+                        cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary", on_click=execute_delete_visita, args=(row_id,))
+                        cn.button("ANNULLA", key=f"no_{row_id}", on_click=cancel_delete, args=(row_id,))
+    else:
+        st.warning("Nessun risultato trovato.")
 
-            # --- NOTE ---
-            if note_preventivo.strip():
-                pdf.ln(5)
-                pdf.set_font("helvetica", "B", 14) 
-                pdf.cell(0, 8, "Note:")
-                pdf.ln(8)
-                pdf.set_font("helvetica", "", 13) 
-                testo_note = note_preventivo.replace('€', 'Euro')
-                pdf.multi_cell(0, 6, testo_note)
-            
-            # --- PAGAMENTO, TRASPORTO, VALIDITA' E PREZZI SULLA STESSA RIGA ---
-            pdf.ln(6) 
-            h_c = 6
-            
-            if campo_pagamento.strip():
-                pdf.set_font("helvetica", "B", 10)
-                pdf.cell(pdf.get_string_width("Pagamento: ") + 2, h_c, "Pagamento:", ln=0)
-                pdf.set_font("helvetica", "", 10)
-                pdf.cell(pdf.get_string_width(campo_pagamento) + 6, h_c, campo_pagamento, ln=0)
-
-            if campo_trasporto.strip():
-                pdf.set_font("helvetica", "B", 10)
-                pdf.cell(pdf.get_string_width("Trasporto: ") + 2, h_c, "Trasporto:", ln=0)
-                pdf.set_font("helvetica", "", 10)
-                pdf.cell(pdf.get_string_width(campo_trasporto) + 6, h_c, campo_trasporto, ln=0)
-            
-            if campo_validita.strip():
-                pdf.set_font("helvetica", "B", 10)
-                pdf.cell(pdf.get_string_width("Validità: ") + 2, h_c, "Validità:", ln=0)
-                pdf.set_font("helvetica", "", 10)
-                pdf.cell(pdf.get_string_width(campo_validita) + 6, h_c, campo_validita, ln=0)
+# --- GESTIONE DATI E RIPRISTINO SICURO ---
+st.divider()
+with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
+    with sqlite3.connect('crm_mobile.db') as conn:
+        df_full = pd.read_sql_query("SELECT * FROM visite", conn)
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_full.to_excel(writer, index=False)
+    
+    st.download_button("📥 SCARICA DATABASE (EXCEL)", output.getvalue(), "backup_crm.xlsx", use_container_width=True)
+    
+    st.markdown("---")
+    st.write("📤 **RIPRISTINO DATI**")
+    st.caption("Carica un backup Excel. ATTENZIONE: i dati attuali verranno sostituiti!")
+    file_caricato = st.file_uploader("Seleziona il file Excel di backup", type=["xlsx"])
+    
+    if file_caricato is not None:
+        if st.button("⚠️ AVVIA RIPRISTINO (Sovrascrive tutto)", type="primary", use_container_width=True):
+            try:
+                df_ripristino = pd.read_excel(file_caricato)
+                if 'cliente' in df_ripristino.columns:
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        c = conn.cursor()
+                        c.execute("DROP TABLE IF EXISTS visite")
+                        conn.commit()
+                        
+                        c.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                      cliente TEXT, localita TEXT, provincia TEXT,
+                                      tipo_cliente TEXT, data TEXT, note TEXT,
+                                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
+                                      referente TEXT, telefono TEXT)''')
+                        conn.commit()
+                        
+                        df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                        
+                    st.success("✅ Database ripristinato correttamente! Riavvio...")
+                    time.sleep(2)
+                    st.rerun()
+                else:
+                    st.error("❌ Il file non sembra un backup valido del CRM.")
+            except Exception as e:
+                st.error(f"Errore durante il ripristino: {e}")
                 
-            pdf.set_font("helvetica", "B", 10)
-            pdf.cell(pdf.get_string_width("Prezzi: ") + 2, h_c, "Prezzi:", ln=0)
-            pdf.set_font("helvetica", "", 10)
-            pdf.cell(0, h_c, "netti iva esclusa", ln=1)
+    st.markdown("---")
+    st.write("📂 **BACKUP AUTOMATICI (Dal Server)**")
+    
+    cartella_backup = "BACKUPS_AUTOMATICI"
+    if os.path.exists(cartella_backup):
+        files_backup = [f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')]
+        if files_backup:
+            files_backup.sort(reverse=True)
+            file_selezionato = st.selectbox("Seleziona il backup automatico (Ne viene salvato solo uno!):", files_backup)
+            
+            with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
+                st.download_button(
+                    label=f"⬇️ SCARICA {file_selezionato}",
+                    data=f,
+                    file_name=file_selezionato,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        else:
+            st.info("Nessun backup automatico generato finora.")
+    else:
+        st.info("La cartella dei backup verrà creata al primo salvataggio.")
 
-            # --- FIRMA ---
-            pdf.ln(10)
-            pdf.set_font("helvetica", "I", 11)
-            pdf.cell(0, 6, "Michele Cavallo - Area Manager | Base Protection srl", align="R", ln=1)
-            pdf.cell(0, 6, "Tel. 389.0199088", align="R", ln=1)
+# --- LOGO FINALE ---
+st.write("") 
+st.divider() 
 
-            pdf_out = pdf.output()
-            
-            if isinstance(pdf_out, str):
-                pdf_bytes = pdf_out.encode('latin-1')
-            else:
-                pdf_bytes = bytes(pdf_out)
-            
-            data_oggi = datetime.now().strftime("%d.%m.%Y")
-            nome_sicuro = "".join(x for x in nome_cliente if x.isalnum() or x in " -_").strip()
-            nome_sicuro = nome_sicuro.replace(" ", "_") if nome_sicuro else "Cliente"
-            nome_file_dinamico = f"{nome_sicuro}_{data_oggi}.pdf"
-            
-            st.divider()
-            st.success("✅ PDF pronto per essere scaricato!")
-            
-            st.download_button(
-                label=f"⬇️ Clicca qui per Salvare '{nome_file_dinamico}'",
-                data=pdf_bytes,
-                file_name=nome_file_dinamico,
-                mime="application/pdf",
-                use_container_width=True,
-                type="primary"
-            )
+col_f1, col_f2, col_f3 = st.columns([1, 2, 1]) 
+
+with col_f2:
+    try:
+        st.image("logo.jpg", use_container_width=True)
+        st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+    except Exception:
+        st.info("✅ Michelone Approved")
