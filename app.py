@@ -109,7 +109,14 @@ def salva_visita():
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
             
-            if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
+            if scelta == "Ore 18:30":
+                now = datetime.now()
+                # Se sono prima delle 18:30 imposto oggi, altrimenti domani
+                if now.hour < 18 or (now.hour == 18 and now.minute < 30):
+                    data_fup = now.strftime("%Y-%m-%d 18:30")
+                else:
+                    data_fup = (now + timedelta(days=1)).strftime("%Y-%m-%d 18:30")
+            elif scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 giorni = int(scelta.split()[0])
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
             elif scelta == "Prox. Lunedì":
@@ -140,7 +147,6 @@ def salva_visita():
         st.toast("✅ Visita salvata!", icon="💾")
     else:
         st.error("⚠️ Inserisci almeno Cliente e Note!")
-
 
 # --- CALLBACKS PER I PULSANTI IN ARCHIVIO E SCADENZE ---
 def posticipa_fup(id_val):
@@ -200,7 +206,6 @@ def toggle_crm_copy(id_val):
         conn.execute("UPDATE visite SET copiato_crm = ? WHERE id = ?", (new_val, id_val))
         conn.commit()
 
-
 # --- 3. INTERFACCIA UTENTE ---
 st.title("💼 CRM Michelone")
 
@@ -214,7 +219,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.markdown("---")
     
-    # --- GPS SPOSTATO QUI (PRIMA DEI CAMPI DI TESTO) ---
     loc_data = get_geolocation()
     if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
         if loc_data and 'coords' in loc_data:
@@ -245,7 +249,6 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
                 del st.session_state['gps_temp']
                 st.rerun()
 
-    # --- CAMPI LOCALITÀ E PROVINCIA SPOSTATI QUI SOTTO ---
     col_l, col_p = st.columns([3, 1]) 
     with col_l: st.text_input("Località", key="localita_key")
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
@@ -258,15 +261,16 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_area("Note", key="note_key", height=250)
     
     st.write("📅 **Pianifica Ricontatto:**")
-    st.radio("Scadenza", ["No", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+    st.radio("Scadenza", ["No", "Ore 18:30", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
 
 # --- ALERT SCADENZE ---
 with sqlite3.connect('crm_mobile.db') as conn:
-    oggi = datetime.now().strftime("%Y-%m-%d")
-    df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi}' ORDER BY data_followup ASC", conn)
+    # Aggiungo l'orario fittizio 23:59:59 per assicurarmi di prendere anche i task schedulati alle 18:30 di oggi
+    oggi_limite = datetime.now().strftime("%Y-%m-%d 23:59:59")
+    df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 
 if not df_scadenze.empty:
     st.error(f"⚠️ **HAI {len(df_scadenze)} CLIENTI DA RICONTATTARE!**")
@@ -277,11 +281,22 @@ if not df_scadenze.empty:
             continue
 
         try:
-            d_scad = datetime.strptime(row['data_followup'], "%Y-%m-%d")
-            d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
+            fup_str = str(row['data_followup'])
+            # Divido per separare data e orario (se esiste)
+            d_scad = datetime.strptime(fup_str.split()[0], "%Y-%m-%d").date()
+            d_oggi = datetime.now().date()
             giorni_ritardo = (d_oggi - d_scad).days
-            msg_scadenza = "Scade OGGI" if giorni_ritardo == 0 else f"Scaduto da {giorni_ritardo} gg"
-        except: msg_scadenza = "Scaduto"
+            
+            if giorni_ritardo == 0:
+                orario = f" alle {fup_str.split()[1]}" if " " in fup_str else ""
+                msg_scadenza = f"Scade OGGI{orario}"
+            elif giorni_ritardo < 0:
+                # Può succedere se abbiamo preso una scadenza futura per qualche anomalia o fuso orario, ma ci proteggiamo
+                msg_scadenza = "In scadenza" 
+            else:
+                msg_scadenza = f"Scaduto da {giorni_ritardo} gg"
+        except: 
+            msg_scadenza = "Scaduto"
 
         with st.container(border=True):
             tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
@@ -395,7 +410,8 @@ if st.session_state.ricerca_attiva:
                     st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
                     
                     fup_attuale = row['data_followup']
-                    val_ini = datetime.strptime(fup_attuale, "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
+                    # Isolo la data ignorando l'eventuale orario nel modulo di modifica manuale
+                    val_ini = datetime.strptime(str(fup_attuale).split()[0], "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
                     attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}")
                     if attiva_fup:
                         st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row_id}")
@@ -422,7 +438,10 @@ if st.session_state.ricerca_attiva:
 
                     if row['data_followup']:
                         try:
-                            data_fup_it = datetime.strptime(row['data_followup'], "%Y-%m-%d").strftime("%d/%m/%Y")
+                            fup_parts = str(row['data_followup']).split()
+                            data_fup_it = datetime.strptime(fup_parts[0], "%Y-%m-%d").strftime("%d/%m/%Y")
+                            if len(fup_parts) > 1:
+                                data_fup_it += f" alle {fup_parts[1]}"
                             st.write(f"📅 **Ricontatto:** {data_fup_it}")
                         except: pass
 
