@@ -301,8 +301,8 @@ if not df_scadenze.empty:
             st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            # Nuova disposizione pulsanti per far spazio a "Oggi 18:30"
-            c1, c2, c3, c4 = st.columns([1, 1, 1.2, 1])
+            # --- RIGA 1: I giorni e chiusura (+1, +7, +15, Fatto) ---
+            c1, c2, c3, c4 = st.columns(4)
             with c1:
                 if st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True):
                     st.session_state.temp_giorni = 1
@@ -314,15 +314,21 @@ if not df_scadenze.empty:
                     posticipa_fup(row_id)
                     st.rerun()
             with c3:
-                st.button("🕔 Oggi 18:30", key=f"o1830_{row_id}", use_container_width=True, on_click=set_fup_oggi_1830, args=(row_id,))
+                if st.button("+15 📅", key=f"p15_{row_id}", use_container_width=True):
+                    st.session_state.temp_giorni = 15
+                    posticipa_fup(row_id)
+                    st.rerun()
             with c4:
                 st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                     
-            c5, c6 = st.columns(2)
+            # --- RIGA 2: Date specifiche (Oggi 18:30, Prox. Lunedì, Prox. Venerdì) ---
+            c5, c6, c7 = st.columns(3)
             with c5:
-                st.button("➡️ Prox. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
+                st.button("🕔 Oggi 18:30", key=f"o1830_{row_id}", use_container_width=True, on_click=set_fup_oggi_1830, args=(row_id,))
             with c6:
-                st.button("➡️ Prox. Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
+                st.button("➡️ P. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
+            with c7:
+                st.button("➡️ P. Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
 
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
