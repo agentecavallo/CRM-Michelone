@@ -26,7 +26,8 @@ def inizializza_db():
                       tipo_cliente TEXT, data TEXT, note TEXT,
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                       latitudine TEXT, longitudine TEXT,
-                      referente TEXT, telefono TEXT)''')
+                      referente TEXT, telefono TEXT,
+                      visita_autonoma INTEGER DEFAULT 0)''')
         
         # --- MIGRAZIONI AUTOMATICHE PER VECCHI DATABASE ---
         try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
@@ -36,6 +37,9 @@ def inizializza_db():
         except: pass
         
         try: c.execute("ALTER TABLE visite ADD COLUMN telefono TEXT DEFAULT ''")
+        except: pass
+
+        try: c.execute("ALTER TABLE visite ADD COLUMN visita_autonoma INTEGER DEFAULT 0")
         except: pass
             
         conn.commit()
@@ -99,6 +103,7 @@ def salva_visita():
     tipo = s.get('tipo_key', 'Prospect')
     referente = s.get('referente_key', '').strip()
     telefono = s.get('telefono_key', '').strip()
+    autonomia = 1 if s.get('autonomia_key', False) else 0
     
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
@@ -121,11 +126,11 @@ def salva_visita():
             
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                  data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
-                                 referente, telefono) 
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)""", 
+                                 referente, telefono, visita_autonoma) 
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""", 
                       (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo, 
                        data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
-                       s.lat_val, s.lon_val, referente, telefono))
+                       s.lat_val, s.lon_val, referente, telefono, autonomia))
             conn.commit()
         
         # Reset dei campi
@@ -138,6 +143,7 @@ def salva_visita():
         st.session_state.referente_key = ""
         st.session_state.telefono_key = ""
         st.session_state.fup_opt = "No"
+        st.session_state.autonomia_key = False
         
         st.toast("✅ Visita salvata!", icon="💾")
     else:
@@ -183,6 +189,7 @@ def execute_save_modifica(id_val):
     new_ag = s.get(f"e_ag_{id_val}", "HSE")
     new_ref = s.get(f"e_ref_{id_val}", "")
     new_tel = s.get(f"e_tel_{id_val}", "")
+    new_aut = 1 if s.get(f"e_aut_{id_val}", False) else 0
     
     new_fup = ""
     if s.get(f"e_chk_{id_val}", False):
@@ -190,8 +197,8 @@ def execute_save_modifica(id_val):
         if dt: new_fup = dt.strftime("%Y-%m-%d")
         
     with sqlite3.connect('crm_mobile.db') as conn:
-        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=? WHERE id=?""",
-                     (new_cli, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_ag, new_fup, new_ref, new_tel, id_val))
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=? WHERE id=?""",
+                     (new_cli, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_ag, new_fup, new_ref, new_tel, new_aut, id_val))
         conn.commit()
     st.session_state.edit_mode_id = None
 
@@ -258,9 +265,14 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
 
     st.markdown("---")
-    c1, c2 = st.columns(2)
+    
+    # Spostato qui su tre colonne per ospitare la spunta "Autonomia"
+    c1, c2, c3 = st.columns([1.5, 1.5, 1])
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
+    with c3:
+        st.write("") # Piccolo spazio per allineare al centro la casella di testo
+        st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
     
     st.text_area("Note", key="note_key", height=250)
     
@@ -334,17 +346,19 @@ if not df_scadenze.empty:
 st.subheader("🔍 Archivio Visite")
 
 f1, f2, f3 = st.columns([1.5, 1, 1])
-t_ricerca = f1.text_input("Cerca Cliente o Città")
+t_ricerca = f1.text_input("Cerca Cliente, Città o Note") # <- Modificato il testo qui!
 
 oggi_dt = datetime.today().date()
 periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
 
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-f4, f5, f6 = st.columns([1, 1, 1])
+# Aggiunto il quarto filtro sulla riga
+f4, f5, f6, f7 = st.columns(4)
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
 f_referente = f6.selectbox("Filtra Referente", ["Tutti", "Con Referente", "Senza Referente"])
+f_autonomia = f7.selectbox("Autonomia", ["Tutte", "In Autonomia", "In Affiancamento"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -355,7 +369,10 @@ if st.session_state.ricerca_attiva:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
     if t_ricerca:
-        df = df[df['cliente'].str.contains(t_ricerca, case=False) | df['localita'].str.contains(t_ricerca, case=False)]
+        # Ora la ricerca cerca dentro cliente, località e anche dentro le note
+        df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | 
+                df['localita'].str.contains(t_ricerca, case=False, na=False) |
+                df['note'].str.contains(t_ricerca, case=False, na=False)]
     if f_agente != "Tutti":
         df = df[df['agente'] == f_agente]
     if f_tipo != "Tutti":
@@ -368,6 +385,12 @@ if st.session_state.ricerca_attiva:
         df = df[(df['referente'].notnull()) & (df['referente'].str.strip() != '')]
     elif f_referente == "Senza Referente":
         df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
+    
+    # Filtro sulla colonna autonomia
+    if f_autonomia == "In Autonomia":
+        df = df[df['visita_autonoma'] == 1]
+    elif f_autonomia == "In Affiancamento":
+        df = df[(df['visita_autonoma'] == 0) | (df['visita_autonoma'].isnull())]
 
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
@@ -406,10 +429,15 @@ if st.session_state.ricerca_attiva:
                     with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
                     with c_rt2: st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
 
-                    lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
-                    try: idx_ag = lista_agenti.index(row['agente'])
-                    except: idx_ag = 0
-                    st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row_id}")
+                    c_a1, c_a2 = st.columns(2)
+                    with c_a1:
+                        lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
+                        try: idx_ag = lista_agenti.index(row['agente'])
+                        except: idx_ag = 0
+                        st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row_id}")
+                    with c_a2:
+                        st.write("")
+                        st.checkbox("🚶‍♂️ In Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
                     
                     st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row_id}")
                     st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row_id}")
@@ -428,7 +456,8 @@ if st.session_state.ricerca_attiva:
                 
                 # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
-                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']}")
+                    aut_text = "🚶‍♂️ In Autonomia" if row.get('visita_autonoma') == 1 else "🤝 In Affiancamento"
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']} | {aut_text}")
                     
                     ref_val = row.get('referente', '')
                     tel_val = row.get('telefono', '')
@@ -502,7 +531,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                                       tipo_cliente TEXT, data TEXT, note TEXT,
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
-                                      referente TEXT, telefono TEXT)''')
+                                      referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0)''')
                         conn.commit()
                         
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
