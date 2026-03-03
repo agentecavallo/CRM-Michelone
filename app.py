@@ -285,7 +285,8 @@ st.divider()
 # --- ALERT SCADENZE ---
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi = datetime.now().strftime("%Y-%m-%d")
-    oggi_limite = datetime.now().strftime("%Y-%m-%d 23:59:59")
+    # MODIFICA: Al posto di cercare fino alle 23:59, cerchiamo fino al minuto esatto attuale.
+    oggi_limite = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 
 if not df_scadenze.empty:
@@ -346,7 +347,7 @@ if not df_scadenze.empty:
 st.subheader("🔍 Archivio Visite")
 
 f1, f2, f3 = st.columns([1.5, 1, 1])
-t_ricerca = f1.text_input("Cerca Cliente, Città o Note") # <- Modificato il testo qui!
+t_ricerca = f1.text_input("Cerca Cliente, Città o Note") 
 
 oggi_dt = datetime.today().date()
 periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
