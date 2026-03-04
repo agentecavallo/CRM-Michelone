@@ -9,24 +9,24 @@ from io import BytesIO
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
-# --- STILE CSS PERSONALIZZATO (Il "Brio") ---
+# --- STILE CSS PERSONALIZZATO (Il "Brio" e la Pulizia Mobile) ---
 st.markdown("""
 <style>
-    /* Nasconde il menu in alto e il footer di Streamlit per fare spazio */
+    /* Nasconde i menu di Streamlit per un look "App Nativa" */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Rende l'app più "ariosa" sui bordi del telefono */
+    /* Ottimizza gli spazi per schermi stretti (telefoni) */
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 0.5rem !important;
         padding-bottom: 2rem !important;
     }
     
-    /* Arrotonda un po' le card per un look moderno */
-    div[data-testid="stExpander"] div[role="button"] p {
+    /* Rende i titoli delle schede e degli expander più leggibili */
+    div[data-testid="stExpander"] div[role="button"] p, .stTabs button p {
         font-weight: bold !important;
-        font-size: 1.1rem !important;
+        font-size: 1.05rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -78,6 +78,7 @@ def controllo_backup_automatico():
     cartella_backup = "BACKUPS_AUTOMATICI"
     if not os.path.exists(cartella_backup): os.makedirs(cartella_backup)
     now = datetime.now()
+    # Il backup automatico scatta al primo avvio giornaliero dopo le 07:00
     if now.hour >= 7:
         today_str = now.strftime('%Y-%m-%d')
         backup_di_oggi_esiste = any(today_str in f for f in os.listdir(cartella_backup) if f.endswith('.xlsx'))
@@ -89,7 +90,7 @@ def controllo_backup_automatico():
                         for f in os.listdir(cartella_backup):
                             if f.endswith('.xlsx'): os.remove(os.path.join(cartella_backup, f))
                         df.to_excel(os.path.join(cartella_backup, f"Backup_Auto_{today_str}.xlsx"), index=False)
-                        st.toast(f"🛡️ Backup Eseguito ({today_str})", icon="✅")
+                        st.toast(f"🛡️ Backup Automatico Eseguito ({today_str})", icon="✅")
                 except: pass
 
 controllo_backup_automatico()
@@ -131,7 +132,7 @@ def salva_visita():
         for k in ['cliente_key', 'note_key', 'referente_key', 'telefono_key']: st.session_state[k] = ""
         for k in ['autonomia_key', 'cng_key', 'cross_key']: st.session_state[k] = False
         st.session_state.fup_opt = "No"
-        st.toast("✅ Visita salvata con successo!", icon="💾")
+        st.toast("✅ Visita salvata nel database!", icon="💾")
     else:
         st.error("⚠️ Attenzione: Cliente e Note sono obbligatori!")
 
@@ -141,7 +142,7 @@ def aggiorna_fup(id_val, query_mod, params):
         conn.execute(query_mod, params)
         conn.commit()
 
-# Nuova funzione unificata per posticipare in modo diretto senza ricaricare l'intera logica session_state
+# Posticipo diretto per non far saltare la tab attiva su telefono
 def posticipa_fup_diretto(id_val, giorni):
     nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
     aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
@@ -173,24 +174,39 @@ def execute_delete_visita(id_val):
         conn.commit()
     st.session_state[f"confirm_del_{id_val}"] = False
 
-# --- PRE-CALCOLO SCADENZE PER LE TABS ---
+# --- PRE-CALCOLO SCADENZE PER LE VISUALIZZAZIONI ---
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi_limite = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
-
 num_scadenze = len(df_scadenze)
 
-# --- COSTRUZIONE TABS ---
+
+# ==========================================
+# TESTATA APPLICAZIONE (Titolo + Logo/Firma Centrati e Crisp)
+# ==========================================
 st.title("💼 CRM Michelone")
 
-# I nomi delle tab rimangono identici così Streamlit non ricarica sbalzandoci fuori
+# Colonnaggio responsive per centrare il logo e mantenerlo piccolo e nitido
+# Se l'immagine è alta risoluzione, la costrizione della colonna lo rende nitidissimo.
+cl_l, cl_c, cl_r = st.columns([1.5, 1, 1.5]) 
+with cl_c:
+    try:
+        st.image("logo.jpg", use_container_width=True)
+        st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+    except Exception:
+        st.caption("Firma non trovata")
+
+st.write("") 
+
+# --- COSTRUZIONE TABS (Nomi fissi per non far saltare la tab attiva al click) ---
 tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova Visita", "⏰ Scadenze", "🔍 Archivio", "⚙️ Setup"])
+
 
 # ==========================================
 # TAB 1: NUOVA VISITA
 # ==========================================
 with tab_nuova:
-    st.write("### Compila Dati Visita")
+    st.write("### Compila Dati Incontro")
     
     with st.container(border=True):
         st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
@@ -200,6 +216,7 @@ with tab_nuova:
         with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
         with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
         
+        st.markdown("---")
         c_dt, c_ag = st.columns(2)
         with c_dt: st.date_input("Data Visita", datetime.now(), format="DD/MM/YYYY", key="data_key")
         with c_ag: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
@@ -216,14 +233,15 @@ with tab_nuova:
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
         
     st.write("")
-    st.button("💾 SALVA NEL CRM", on_click=salva_visita, type="primary", use_container_width=True)
+    st.button("💾 SALVA NEL CRM MICHELONE", on_click=salva_visita, type="primary", use_container_width=True)
+
 
 # ==========================================
 # TAB 2: SCADENZE
 # ==========================================
 with tab_scadenze:
     if num_scadenze > 0:
-        st.error(f"Hai **{num_scadenze}** clienti che attendono un tuo contatto.")
+        st.error(f"⚠️ Attenzione! Hai **{num_scadenze}** contatti da gestire immediatamente.")
         oggi = datetime.now().strftime("%Y-%m-%d")
         
         for _, row in df_scadenze.iterrows():
@@ -239,46 +257,48 @@ with tab_scadenze:
 
             with st.container(border=True):
                 st.markdown(f"#### {row['cliente']} ({row['tipo_cliente']})")
-                st.caption(f"⏰ **Scadenza:** {msg_scadenza}")
-                st.info(f"**Note:** {row['note']}")
+                st.caption(f"⏰ **In Scadenza:** {msg_scadenza}")
+                st.info(f"**Note Ultime:** {row['note']}")
                 
-                # Bottoni posticipo ottimizzati con on_click e args per non far saltare la tab
-                c1, c2, c3, c4 = st.columns(4)
+                # Riga 1: Azioni immediate e compatti +7 / +15
+                c1, c2, c3, c4 = st.columns([1, 1, 1, 1.3])
                 with c1: st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
                 with c2: st.button("+7 gg", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 7))
                 with c3: st.button("+15 gg", key=f"p15_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 15))
-                with c4: st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
+                with c4: st.button("✅ Gestito", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                         
+                # Riga 2: Data specifica intelligente (salta a domani se tardi)
                 c5, c6, c7 = st.columns(3)
                 with c5: st.button("🕔 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_alle_1700, args=(row_id,))
                 with c6: st.button("➡️ Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
                 with c7: st.button("➡️ Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
     else:
-        st.success("Grandioso! Non hai nessuna scadenza in arretrato.")
+        st.success("🎉 Grandioso! Nessun ricontatto in scadenza, tutto sotto controllo.")
+
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
 # ==========================================
 with tab_archivio:
-    st.write("### Cerca nel Database")
+    st.write("### Consulta Database Visite")
     
     t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
-    periodo = st.date_input("Seleziona Periodo", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
+    periodo = st.date_input("Periodo Visita", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
     
-    with st.expander("⚙️ Filtri Dettagliati (Tocca per aprire)"):
+    with st.expander("⚙️ Filtri Avanzati (Tocca per aprire)"):
         c_f1, c_f2 = st.columns(2)
         f_agente = c_f1.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-        f_tipo = c_f2.selectbox("Stato", ["Tutti", "Prospect", "Cliente"])
+        f_tipo = c_f2.selectbox("Stato Cliente", ["Tutti", "Prospect", "Cliente"])
         
         c_f3, c_f4 = st.columns(2)
-        f_stato_crm = c_f3.selectbox("Salvataggio CRM", ["Tutti", "Da Caricare", "Caricati"])
-        f_referente = c_f4.selectbox("Referente", ["Tutti", "Con Referente", "Senza"])
+        f_stato_crm = c_f3.selectbox("Salvato su CRM Aziendale", ["Tutti", "Da Caricare", "Caricati"])
+        f_referente = c_f4.selectbox("Dati Contatto", ["Tutti", "Con Referente", "Senza"])
         
         f_autonomia = st.selectbox("Modalità Visita", ["Tutte", "In Autonomia", "In Affiancamento"])
         
         c_f6, c_f7 = st.columns(2)
-        f_cng = c_f6.selectbox("C. Net Gain", ["Tutti", "Sì", "No"])
-        f_cross = c_f7.selectbox("Cross Selling", ["Tutti", "Sì", "No"])
+        f_cng = c_f6.selectbox("🚀 Customer Net Gain", ["Tutti", "Sì", "No"])
+        f_cross = c_f7.selectbox("🔄 Cross Selling", ["Tutti", "Sì", "No"])
 
     st.write("")
     if st.button("🔎 AVVIA RICERCA", use_container_width=True, type="primary"):
@@ -290,6 +310,7 @@ with tab_archivio:
         with sqlite3.connect('crm_mobile.db') as conn:
             df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
         
+        # Applicazione Filtri
         if t_ricerca: df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | df['note'].str.contains(t_ricerca, case=False, na=False)]
         if f_agente != "Tutti": df = df[df['agente'] == f_agente]
         if f_tipo != "Tutti": df = df[df['tipo_cliente'] == f_tipo]
@@ -309,7 +330,7 @@ with tab_archivio:
 
         if not df.empty:
             c_res1, c_res2 = st.columns([2, 1])
-            c_res1.success(f"Trovate {len(df)} visite.")
+            c_res1.success(f"Trovate {len(df)} visite corrispondenti.")
             if c_res2.button("Chiudi ❌", use_container_width=True):
                 st.session_state.ricerca_attiva = False; st.rerun()
 
@@ -317,19 +338,23 @@ with tab_archivio:
                 try: row_id = int(float(row['id']))
                 except: continue
                     
+                # Icona salvataggio gestionale
                 icona_crm = "✅" if row.get('copiato_crm') == 1 else "⏳"
                 badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
+                
+                # Mantiene l'expander aperto se siamo in modifica o eliminazione per quella riga
                 tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(f"confirm_del_{row_id}", False)
                 
                 with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
+                    # --- MODALITÀ MODIFICA (ARCHIVIO) ---
                     if st.session_state.edit_mode_id == row_id:
-                        st.info("✏️ Modifica Modalità Attiva")
-                        st.text_input("Cliente", value=str(row['cliente'] or ""), key=f"e_cli_{row_id}")
+                        st.info("✏️ Modifica Dati Attiva")
+                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}")
                         st.selectbox("Stato", ["Prospect", "Cliente"], index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
                         
                         c_rt1, c_rt2 = st.columns(2)
-                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
-                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
+                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}")
+                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}")
 
                         st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
                         
@@ -338,70 +363,80 @@ with tab_archivio:
                         with ca2: st.checkbox("🚀 C.N.G.", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
                         with ca3: st.checkbox("🔄 Cross S.", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
                         
-                        st.text_area("Note", value=str(row['note'] or ""), height=150, key=f"e_note_{row_id}")
+                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=150, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
                         
                         fup_attuale = row['data_followup']
-                        if st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}"):
+                        if st.checkbox("Pianifica Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}"):
+                            # Converte data DB per il date_input Streamlit
                             st.date_input("Data Ricontatto", value=datetime.strptime(fup_attuale[:10], "%Y-%m-%d").date() if fup_attuale else datetime.today().date(), format="DD/MM/YYYY", key=f"e_dt_{row_id}")
 
                         cs, cc = st.columns(2)
-                        cs.button("💾 SALVA", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
+                        cs.button("💾 SALVA MODIFICHE", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
                         cc.button("❌ ANNULLA", key=f"canc_{row_id}", use_container_width=True, on_click=cancel_edit)
                     
+                    # --- MODALITÀ VISUALIZZAZIONE ---
                     else:
-                        st.write(f"**Agente:** {row['agente']} | **Stato:** {row['tipo_cliente']}")
+                        st.write(f"**Agente:** {row['agente']} | **Stato Cliente:** {row['tipo_cliente']}")
                         
                         tags = []
                         if row.get('visita_autonoma') == 1: tags.append("🚶‍♂️ Autonomia")
-                        if row.get('customer_net_gain') == 1: tags.append("🚀 Net Gain")
+                        if row.get('customer_net_gain') == 1: tags.append("🚀 C. Net Gain")
                         if row.get('operazioni_cross_selling') == 1: tags.append("🔄 Cross Selling")
-                        if tags: st.caption(" | ".join(tags))
+                        if tags: st.caption("Etichette: " + " | ".join(tags))
                         
                         if row.get('referente') or row.get('telefono'):
                             st.write(f"👤 **{row.get('referente', '')}** 📞 {row.get('telefono', '')}")
                             
                         st.info(f"{row['note']}")
+                        # Interruttore salvataggio gestionale
                         st.checkbox("✅ Salvato nel gestionale aziendale", value=(row.get('copiato_crm') == 1), key=f"chk_crm_{row_id}", on_change=toggle_crm_copy, args=(row_id,))
 
+                        # Visualizzazione data ricontatto
                         if row['data_followup']:
                             fup_str = row['data_followup']
                             dt_fmt = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M") if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
-                            st.write(f"📅 **Ricontattare il:** {dt_fmt}")
+                            st.markdown(f"**📅 Ricontatto pianificato il:** {dt_fmt}")
                         
+                        # Tasti Azione Estetici
                         st.write("")
                         cb_m, cb_d = st.columns(2)
                         cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True, on_click=set_edit_mode, args=(row_id,))
                         cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", use_container_width=True, on_click=ask_delete, args=(row_id,))
                         
                         if st.session_state.get(f"confirm_del_{row_id}", False):
-                            st.warning("⚠️ Confermi l'eliminazione?")
+                            st.warning("⚠️ Confermi l'eliminazione definitiva?")
                             cy, cn = st.columns(2)
-                            cy.button("SÌ", key=f"yes_{row_id}", type="primary", use_container_width=True, on_click=execute_delete_visita, args=(row_id,))
+                            cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary", use_container_width=True, on_click=execute_delete_visita, args=(row_id,))
                             cn.button("NO", key=f"no_{row_id}", use_container_width=True, on_click=cancel_delete, args=(row_id,))
         else:
             st.warning("Nessun risultato trovato con questi filtri.")
+
 
 # ==========================================
 # TAB 4: SETUP E BACKUP
 # ==========================================
 with tab_setup:
-    st.write("### Sicurezza Dati")
-    st.info("Questa sezione serve per scaricare i backup sul tuo telefono o ripristinarli se cambi dispositivo.")
+    st.write("### Centro Sicurezza e Backup Dati")
+    st.info("Utilizza questa sezione per scaricare i backup sul tuo telefono o ripristinarli se cambi dispositivo.")
     
+    # Prepara dati per download manuale immediato
     with sqlite3.connect('crm_mobile.db') as conn:
-        df_full = pd.read_sql_query("SELECT * FROM visite", conn)
+        df_full = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer: df_full.to_excel(writer, index=False)
-    st.download_button("📥 ESPORTA TUTTO IN EXCEL", output.getvalue(), "backup_crm_completo.xlsx", type="primary", use_container_width=True)
     
-    st.divider()
-    st.write("📤 **RIPRISTINA DA UN BACKUP**")
-    file_caricato = st.file_uploader("Seleziona file Excel", type=["xlsx"])
+    st.download_button("📥 SCARICA TUTTO IL DB (EXCEL)", output.getvalue(), "backup_crm_michelone_completo.xlsx", type="primary", use_container_width=True)
+    
+    st.markdown("---")
+    st.write("📤 **RIPRISTINO DATI (Sovrascrittura Completa)**")
+    st.caption(" ATTENZIONE: i dati attuali nel telefono verranno cancellati e sostituiti da quelli del fileExcel.")
+    file_caricato = st.file_uploader("Seleziona file Excel di backup", type=["xlsx"], key="restore_uploader")
     if file_caricato is not None:
-        if st.button("⚠️ SOVRASCRIVI TUTTO", type="primary", use_container_width=True):
+        if st.button("⚠️ AVVIA RIPRISTINO (AZIONE IRREVERSIBILE)", type="primary", use_container_width=True):
             try:
                 df_ripristino = pd.read_excel(file_caricato)
-                if 'cliente' in df_ripristino.columns:
+                # Controllo base validità
+                if 'cliente' in df_ripristino.columns and 'note' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("DROP TABLE IF EXISTS visite")
                         conn.execute('''CREATE TABLE visite 
@@ -412,25 +447,27 @@ with tab_setup:
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
                                       referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0,
                                       customer_net_gain INTEGER DEFAULT 0, operazioni_cross_selling INTEGER DEFAULT 0)''')
+                        # Inserisce i dati sovrascrivendo l'indice se necessario per SQLite
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
-                    st.success("✅ Ripristino completato! Aggiornamento in corso...")
+                    st.success("✅ Database ripristinato con successo! Aggiornamento App in corso...")
                     time.sleep(2)
                     st.rerun()
-                else: st.error("❌ File non valido.")
-            except Exception as e: st.error(f"Errore: {e}")
+                else: st.error("❌ Il file non sembra un backup valido del CRM.")
+            except Exception as e: st.error(f"Errore durante il ripristino: {e}")
                 
-    st.divider()
-    st.write("📂 **STORICO BACKUP AUTOMATICI**")
+    st.markdown("---")
+    st.write("📂 **STORICO BACKUP GIORNALIERI (Dal Server)**")
     cartella_backup = "BACKUPS_AUTOMATICI"
     if os.path.exists(cartella_backup):
         files_backup = sorted([f for f in os.listdir(cartella_backup) if f.endswith('.xlsx')], reverse=True)
         if files_backup:
-            file_selezionato = st.selectbox("Seleziona backup giornaliero:", files_backup)
+            file_selezionato = st.selectbox("Seleziona il backup giornaliero da scaricare:", files_backup)
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
-                st.download_button(label=f"⬇️ SCARICA", data=f, file_name=file_selezionato, use_container_width=True)
-        else: st.caption("Ancora nessun backup automatico.")
-    else: st.caption("Cartella backup in attesa del primo salvataggio.")
+                st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f, file_name=file_selezionato, use_container_width=True)
+        else: st.caption("Ancora nessun backup giornaliero automatico generato finora.")
+    else: st.caption("Cartella dei backup automatici verrà creata al primo salvataggio giornaliero.")
 
-# Footer Estetico
+
+# Footer Minimal
 st.write("") 
 st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
