@@ -16,7 +16,7 @@ if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
-        # STRUTTURA ORIGINALE INTACTA: così non perdi nulla e non va in errore
+        # STRUTTURA ORIGINALE INTACTA
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -105,14 +105,18 @@ def salva_visita():
             if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 giorni = int(scelta.split()[0])
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
-            elif scelta == "Oggi 17:00":
-                data_fup = datetime.now().strftime("%Y-%m-%d") + " 17:00"
+            elif scelta == "Alle 17:00":
+                now = datetime.now()
+                # Se sono già le 17 o più tardi, sposta a domani alle 17:00
+                if now.hour >= 17:
+                    data_fup = (now + timedelta(days=1)).strftime("%Y-%m-%d") + " 17:00"
+                else:
+                    data_fup = now.strftime("%Y-%m-%d") + " 17:00"
             elif scelta == "Prox. Lunedì":
                 data_fup = calcola_prossimo_giorno(s.data_key, 0)
             elif scelta == "Prox. Venerdì":
                 data_fup = calcola_prossimo_giorno(s.data_key, 4)
             
-            # Inseriamo stringhe vuote ('') per località, provincia e GPS così il DB è felice
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                  data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
                                  referente, telefono, visita_autonoma) 
@@ -147,8 +151,14 @@ def set_fup_prox(id_val, giorno_settimana):
         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
         conn.commit()
 
-def set_fup_oggi_1700(id_val):
-    nuova_data = datetime.now().strftime("%Y-%m-%d") + " 17:00"
+def set_fup_alle_1700(id_val):
+    now = datetime.now()
+    # Se clicchi il pulsante dopo le 17:00, imposta automaticamente per DOMANI alle 17:00
+    if now.hour >= 17:
+        nuova_data = (now + timedelta(days=1)).strftime("%Y-%m-%d") + " 17:00"
+    else:
+        nuova_data = now.strftime("%Y-%m-%d") + " 17:00"
+        
     with sqlite3.connect('crm_mobile.db') as conn:
         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
         conn.commit()
@@ -179,7 +189,6 @@ def execute_save_modifica(id_val):
         if dt: new_fup = dt.strftime("%Y-%m-%d")
         
     with sqlite3.connect('crm_mobile.db') as conn:
-        # Aggiorniamo i campi visibili senza toccare la località eventualmente salvata in precedenza
         conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=? WHERE id=?""",
                      (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, id_val))
         conn.commit()
@@ -221,7 +230,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_area("Note", key="note_key", height=250)
     
     st.write("📅 **Pianifica Ricontatto:**")
-    st.radio("Scadenza", ["No", "Oggi 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+    st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
@@ -246,7 +255,6 @@ if not df_scadenze.empty:
             giorni_ritardo = (d_oggi - d_scad).days
             msg_scadenza = "Scade OGGI" if giorni_ritardo <= 0 else f"Scaduto da {giorni_ritardo} gg"
             
-            # Gestisce in automatico se l'orario è presente (che sia 18:30 vecchio o 17:00 nuovo)
             if len(row['data_followup']) > 10:
                 orario_presente = row['data_followup'][11:]
                 msg_scadenza += f" alle {orario_presente}"
@@ -278,7 +286,8 @@ if not df_scadenze.empty:
                     
             c5, c6, c7 = st.columns(3)
             with c5:
-                st.button("🕔 Oggi 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_oggi_1700, args=(row_id,))
+                # Modificato pulsante in "Alle 17:00"
+                st.button("🕔 Alle 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_alle_1700, args=(row_id,))
             with c6:
                 st.button("➡️ P. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
             with c7:
@@ -351,7 +360,6 @@ if st.session_state.ricerca_attiva:
             key_conf = f"confirm_del_{row_id}"
             tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(key_conf, False)
             
-            # Nascondiamo la località anche dal titolo dell'expander
             with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                 
                 # --- MODALITÀ MODIFICA (ARCHIVIO) ---
@@ -408,7 +416,6 @@ if st.session_state.ricerca_attiva:
                     if row['data_followup']:
                         try:
                             fup_str = row['data_followup']
-                            # Riconosce dinamicamente se è presente un orario
                             if ":" in fup_str:
                                 data_fup_it = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M")
                             else:
@@ -456,7 +463,6 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
                         
-                        # STRUTTURA INTACTA ANCHE QUI
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
