@@ -191,12 +191,12 @@ with tab_nuova:
     
     # Box per evidenziare visivamente l'inserimento
     with st.container(border=True):
-        st.text_input("Nome Cliente", key="cliente_key", placeholder="Azienda S.p.A.")
+        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
         
         c_ref, c_tel = st.columns(2)
-        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Mario Rossi")
-        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="info@... o 333...")
+        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
+        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
         
         c_dt, c_ag = st.columns(2)
         with c_dt: st.date_input("Data Visita", datetime.now(), format="DD/MM/YYYY", key="data_key")
@@ -208,7 +208,7 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
-        st.text_area("Note / Resoconto", key="note_key", height=150, placeholder="Dettagli dell'incontro...")
+        st.text_area("Note / Resoconto", key="note_key", height=150, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
@@ -257,7 +257,6 @@ with tab_scadenze:
                 with c7: st.button("➡️ Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
     else:
         st.success("🎉 Grandioso! Non hai nessuna scadenza in arretrato.")
-        st.balloons()
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
@@ -265,7 +264,7 @@ with tab_scadenze:
 with tab_archivio:
     st.write("### Cerca nel Database")
     
-    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi qui...") 
+    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
     periodo = st.date_input("Seleziona Periodo", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
     
     with st.expander("⚙️ Filtri Dettagliati (Tocca per aprire)"):
