@@ -209,13 +209,13 @@ with tab_nuova:
     st.write("### Compila Dati Incontro")
     
     with st.container(border=True):
-        # Utilizzo di "nope" per ingannare in modo più forte Chrome su Android
-        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...", autocomplete="nope")
+        # Rimossi gli autocomplete per tornare al comportamento naturale della tastiera
+        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
         
         c_ref, c_tel = st.columns(2)
-        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...", autocomplete="nope")
-        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...", autocomplete="nope")
+        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
+        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
         
         st.markdown("---")
         c_dt, c_ag = st.columns(2)
@@ -277,7 +277,7 @@ with tab_scadenze:
 with tab_archivio:
     st.write("### Consulta Database Visite")
     
-    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...", autocomplete="nope") 
+    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
     periodo = st.date_input("Periodo Visita", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
     
     with st.expander("⚙️ Filtri Avanzati (Tocca per aprire)"):
@@ -339,12 +339,12 @@ with tab_archivio:
                 with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                     if st.session_state.edit_mode_id == row_id:
                         st.info("✏️ Modifica Dati Attiva")
-                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}", autocomplete="nope")
+                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}")
                         st.selectbox("Stato", ["Prospect", "Cliente"], index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
                         
                         c_rt1, c_rt2 = st.columns(2)
-                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}", autocomplete="nope")
-                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}", autocomplete="nope")
+                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}")
+                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}")
 
                         st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
                         
