@@ -16,7 +16,6 @@ if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
-        # STRUTTURA ORIGINALE INTACTA + NUOVI CAMPI
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -117,7 +116,6 @@ def salva_visita():
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
             elif scelta == "Alle 17:00":
                 now = datetime.now()
-                # Se sono già le 17 o più tardi, sposta a domani alle 17:00
                 if now.hour >= 17:
                     data_fup = (now + timedelta(days=1)).strftime("%Y-%m-%d") + " 17:00"
                 else:
@@ -233,12 +231,11 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.markdown("---")
     
-    # Riorganizzato in due righe più pulite
     c1, c2 = st.columns(2)
-    with c1: st.date_input("Data", datetime.now(), key="data_key")
+    # Aggiunto format="DD/MM/YYYY" per la visualizzazione italiana
+    with c1: st.date_input("Data", datetime.now(), format="DD/MM/YYYY", key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     
-    # Nuova riga per le etichette speciali
     st.write("")
     ck1, ck2, ck3 = st.columns(3)
     with ck1: st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
@@ -313,13 +310,12 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-# Filtri principali
 f1, f2 = st.columns([1.5, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Note") 
 oggi_dt = datetime.today().date()
-periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
+# Aggiunto format="DD/MM/YYYY" al filtro periodo
+periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt], format="DD/MM/YYYY")
 
-# Filtri Avanzati dentro una tendina per non ingombrare la pagina
 with st.expander("⚙️ Filtri Avanzati"):
     c_f1, c_f2, c_f3 = st.columns(3)
     f_agente = c_f1.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
@@ -343,7 +339,6 @@ if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
-    # Applica filtri
     if t_ricerca:
         df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | 
                 df['note'].str.contains(t_ricerca, case=False, na=False)]
@@ -423,7 +418,8 @@ if st.session_state.ricerca_attiva:
                     val_ini = datetime.strptime(fup_attuale[:10], "%Y-%m-%d").date() if fup_attuale else datetime.today().date()
                     attiva_fup = st.checkbox("Imposta Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}")
                     if attiva_fup:
-                        st.date_input("Nuova Data Ricontatto", value=val_ini, key=f"e_dt_{row_id}")
+                        # Aggiunto format="DD/MM/YYYY" alla data di modifica ricontatto
+                        st.date_input("Nuova Data Ricontatto", value=val_ini, format="DD/MM/YYYY", key=f"e_dt_{row_id}")
 
                     cs, cc = st.columns(2)
                     cs.button("💾 SALVA", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
