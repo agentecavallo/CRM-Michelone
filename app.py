@@ -230,8 +230,8 @@ with tab_nuova:
         st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
-        # Sostituiti i pallini radio con un comodo menu a tendina!
-        st.selectbox("Seleziona una data", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", label_visibility="collapsed")
+        # Ripristinati i vecchi e veloci bottoncini orizzontali!
+        st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
         
     st.write("")
     st.button("💾 SALVA NEL CRM MICHELONE", on_click=salva_visita, type="primary", use_container_width=True)
@@ -270,6 +270,23 @@ with tab_scadenze:
                 with c7: st.button("➡️ Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
     else:
         st.success("🎉 Grandioso! Nessun ricontatto in scadenza, tutto sotto controllo.")
+        
+        # --- NUOVA FUNZIONALITÀ: SBIRCIATA NEL FUTURO ---
+        with sqlite3.connect('crm_mobile.db') as conn:
+            # Peschiamo dal database tutte le date_followup maggiori di oggi (nel futuro) in ordine crescente
+            df_future = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup > '{oggi_limite}' ORDER BY data_followup ASC", conn)
+        
+        if not df_future.empty:
+            st.markdown("---")
+            st.markdown("### 🔮 Prossime Scadenze in Arrivo")
+            for _, row in df_future.iterrows():
+                fup_str = row['data_followup']
+                # Formattiamo la data per farla sembrare più leggibile (es. 25/12/2024 alle 17:00)
+                dt_fmt = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M") if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                
+                with st.container(border=True):
+                    st.markdown(f"**{row['cliente']}**")
+                    st.caption(f"📅 **{dt_fmt}**")
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
