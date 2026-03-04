@@ -105,8 +105,8 @@ def salva_visita():
             if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 giorni = int(scelta.split()[0])
                 data_fup = (s.data_key + timedelta(days=giorni)).strftime("%Y-%m-%d")
-            elif scelta == "Oggi 18:30":
-                data_fup = datetime.now().strftime("%Y-%m-%d") + " 18:30"
+            elif scelta == "Oggi 17:00":
+                data_fup = datetime.now().strftime("%Y-%m-%d") + " 17:00"
             elif scelta == "Prox. Lunedì":
                 data_fup = calcola_prossimo_giorno(s.data_key, 0)
             elif scelta == "Prox. Venerdì":
@@ -147,8 +147,8 @@ def set_fup_prox(id_val, giorno_settimana):
         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
         conn.commit()
 
-def set_fup_oggi_1830(id_val):
-    nuova_data = datetime.now().strftime("%Y-%m-%d") + " 18:30"
+def set_fup_oggi_1700(id_val):
+    nuova_data = datetime.now().strftime("%Y-%m-%d") + " 17:00"
     with sqlite3.connect('crm_mobile.db') as conn:
         conn.execute("UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
         conn.commit()
@@ -207,7 +207,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     col_ref, col_tel = st.columns(2)
     with col_ref: st.text_input("Referente", key="referente_key")
-    with col_tel: st.text_input("Telefono", key="telefono_key")
+    with col_tel: st.text_input("Mail o Telefono", key="telefono_key")
     
     st.markdown("---")
     
@@ -221,7 +221,7 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     st.text_area("Note", key="note_key", height=250)
     
     st.write("📅 **Pianifica Ricontatto:**")
-    st.radio("Scadenza", ["No", "Oggi 18:30", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+    st.radio("Scadenza", ["No", "Oggi 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
     st.button("💾 SALVA VISITA", on_click=salva_visita, use_container_width=True)
 
 st.divider()
@@ -246,8 +246,10 @@ if not df_scadenze.empty:
             giorni_ritardo = (d_oggi - d_scad).days
             msg_scadenza = "Scade OGGI" if giorni_ritardo <= 0 else f"Scaduto da {giorni_ritardo} gg"
             
-            if "18:30" in row['data_followup']:
-                msg_scadenza += " alle 18:30"
+            # Gestisce in automatico se l'orario è presente (che sia 18:30 vecchio o 17:00 nuovo)
+            if len(row['data_followup']) > 10:
+                orario_presente = row['data_followup'][11:]
+                msg_scadenza += f" alle {orario_presente}"
         except: msg_scadenza = "Scaduto"
 
         with st.container(border=True):
@@ -276,7 +278,7 @@ if not df_scadenze.empty:
                     
             c5, c6, c7 = st.columns(3)
             with c5:
-                st.button("🕔 Oggi 18:30", key=f"o1830_{row_id}", use_container_width=True, on_click=set_fup_oggi_1830, args=(row_id,))
+                st.button("🕔 Oggi 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_oggi_1700, args=(row_id,))
             with c6:
                 st.button("➡️ P. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
             with c7:
@@ -364,7 +366,7 @@ if st.session_state.ricerca_attiva:
 
                     c_rt1, c_rt2 = st.columns(2)
                     with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
-                    with c_rt2: st.text_input("Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
+                    with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
 
                     c_a1, c_a2 = st.columns(2)
                     with c_a1:
@@ -396,7 +398,7 @@ if st.session_state.ricerca_attiva:
                     ref_val = row.get('referente', '')
                     tel_val = row.get('telefono', '')
                     if ref_val or tel_val:
-                        st.write(f"👤 **Referente:** {ref_val} | 📞 **Tel:** {tel_val}")
+                        st.write(f"👤 **Referente:** {ref_val} | 📞 **Mail/Tel:** {tel_val}")
                         
                     st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row_id}")
                     
@@ -406,7 +408,8 @@ if st.session_state.ricerca_attiva:
                     if row['data_followup']:
                         try:
                             fup_str = row['data_followup']
-                            if "18:30" in fup_str:
+                            # Riconosce dinamicamente se è presente un orario
+                            if ":" in fup_str:
                                 data_fup_it = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M")
                             else:
                                 data_fup_it = datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
