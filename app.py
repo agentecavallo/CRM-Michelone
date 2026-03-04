@@ -1,25 +1,22 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import requests
 import os
 import time
 from datetime import datetime, timedelta
 from io import BytesIO
-from streamlit_js_eval import get_geolocation
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
 # Inizializzazione chiavi di stato
-if 'lat_val' not in st.session_state: st.session_state.lat_val = ""
-if 'lon_val' not in st.session_state: st.session_state.lon_val = ""
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
+        # STRUTTURA ORIGINALE INTACTA: così non perdi nulla e non va in errore
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -87,15 +84,6 @@ def controllo_backup_automatico():
 
 controllo_backup_automatico()
 
-def applica_dati_gps():
-    if 'gps_temp' in st.session_state:
-        dati = st.session_state['gps_temp']
-        st.session_state.localita_key = dati['citta']
-        st.session_state.prov_key = dati['prov']
-        st.session_state.lat_val = dati['lat']
-        st.session_state.lon_val = dati['lon']
-        del st.session_state['gps_temp']
-
 def salva_visita():
     s = st.session_state
     cliente = s.get('cliente_key', '').strip()
@@ -124,22 +112,18 @@ def salva_visita():
             elif scelta == "Prox. Venerdì":
                 data_fup = calcola_prossimo_giorno(s.data_key, 4)
             
+            # Inseriamo stringhe vuote ('') per località, provincia e GPS così il DB è felice
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                  data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
                                  referente, telefono, visita_autonoma) 
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)""", 
-                      (cliente, s.localita_key.upper(), s.prov_key.upper(), tipo, 
-                       data_visita_fmt, note, data_fup, data_ord, s.agente_key, 
-                       s.lat_val, s.lon_val, referente, telefono, autonomia))
+                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?)""", 
+                      (cliente, tipo, data_visita_fmt, note, data_fup, data_ord, 
+                       s.agente_key, referente, telefono, autonomia))
             conn.commit()
         
         # Reset dei campi
         st.session_state.cliente_key = ""
-        st.session_state.localita_key = ""
-        st.session_state.prov_key = ""
         st.session_state.note_key = ""
-        st.session_state.lat_val = ""
-        st.session_state.lon_val = ""
         st.session_state.referente_key = ""
         st.session_state.telefono_key = ""
         st.session_state.fup_opt = "No"
@@ -183,8 +167,6 @@ def execute_save_modifica(id_val):
     s = st.session_state
     new_cli = s.get(f"e_cli_{id_val}", "")
     new_tipo = s.get(f"e_tp_{id_val}", "Prospect")
-    new_loc = s.get(f"e_loc_{id_val}", "")
-    new_prov = s.get(f"e_prov_{id_val}", "")
     new_note = s.get(f"e_note_{id_val}", "")
     new_ag = s.get(f"e_ag_{id_val}", "HSE")
     new_ref = s.get(f"e_ref_{id_val}", "")
@@ -197,8 +179,9 @@ def execute_save_modifica(id_val):
         if dt: new_fup = dt.strftime("%Y-%m-%d")
         
     with sqlite3.connect('crm_mobile.db') as conn:
-        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, localita=?, provincia=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=? WHERE id=?""",
-                     (new_cli, new_tipo, new_loc.upper(), new_prov.upper(), new_note, new_ag, new_fup, new_ref, new_tel, new_aut, id_val))
+        # Aggiorniamo i campi visibili senza toccare la località eventualmente salvata in precedenza
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=? WHERE id=?""",
+                     (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, id_val))
         conn.commit()
     st.session_state.edit_mode_id = None
 
@@ -228,50 +211,11 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.markdown("---")
     
-    # --- GPS SPOSTATO QUI (PRIMA DEI CAMPI DI TESTO) ---
-    loc_data = get_geolocation()
-    if st.button("📍 CERCA POSIZIONE GPS", use_container_width=True):
-        if loc_data and 'coords' in loc_data:
-            try:
-                lat, lon = loc_data['coords']['latitude'], loc_data['coords']['longitude']
-                headers = {'User-Agent': 'CRM_Michelone_App/1.0'}
-                r = requests.get(f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}", headers=headers).json()
-                a = r.get('address', {})
-                citta = a.get('city', a.get('town', a.get('village', '')))
-                
-                prov_full = a.get('county', '')
-                if prov_full and ("Roma" in prov_full or "Rome" in prov_full):
-                    prov_sigla = "RM"
-                else:
-                    prov_sigla = prov_full[:2].upper() if prov_full else "??"
-                
-                st.session_state['gps_temp'] = {'citta': citta.upper() if citta else "", 'prov': prov_sigla, 'lat': str(lat), 'lon': str(lon)}
-            except: st.warning("Impossibile recuperare i dettagli dell'indirizzo.")
-        else: st.warning("⚠️ Consenti la geolocalizzazione nel browser.")
-
-    if 'gps_temp' in st.session_state:
-        d = st.session_state['gps_temp']
-        st.info(f"🛰️ Trovato: **{d['citta']} ({d['prov']})**")
-        c_yes, c_no = st.columns(2)
-        with c_yes: st.button("✅ INSERISCI", on_click=applica_dati_gps, use_container_width=True)
-        with c_no: 
-            if st.button("❌ ANNULLA", use_container_width=True): 
-                del st.session_state['gps_temp']
-                st.rerun()
-
-    # --- CAMPI LOCALITÀ E PROVINCIA SPOSTATI QUI SOTTO ---
-    col_l, col_p = st.columns([3, 1]) 
-    with col_l: st.text_input("Località", key="localita_key")
-    with col_p: st.text_input("Prov.", key="prov_key", max_chars=2)
-
-    st.markdown("---")
-    
-    # Spostato qui su tre colonne per ospitare la spunta "Autonomia"
     c1, c2, c3 = st.columns([1.5, 1.5, 1])
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     with c3:
-        st.write("") # Piccolo spazio per allineare al centro la casella di testo
+        st.write("") 
         st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
     
     st.text_area("Note", key="note_key", height=250)
@@ -285,7 +229,6 @@ st.divider()
 # --- ALERT SCADENZE ---
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi = datetime.now().strftime("%Y-%m-%d")
-    # MODIFICA: Al posto di cercare fino alle 23:59, cerchiamo fino al minuto esatto attuale.
     oggi_limite = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 
@@ -298,23 +241,20 @@ if not df_scadenze.empty:
             continue
 
         try:
-            # Tagliamo ai primi 10 caratteri per non far crashare la lettura della data
             d_scad = datetime.strptime(row['data_followup'][:10], "%Y-%m-%d")
             d_oggi = datetime.strptime(oggi, "%Y-%m-%d")
             giorni_ritardo = (d_oggi - d_scad).days
             msg_scadenza = "Scade OGGI" if giorni_ritardo <= 0 else f"Scaduto da {giorni_ritardo} gg"
             
-            # Se c'è l'orario, lo aggiungiamo al messaggio
             if "18:30" in row['data_followup']:
                 msg_scadenza += " alle 18:30"
         except: msg_scadenza = "Scaduto"
 
         with st.container(border=True):
             tipo_label = f"({row['tipo_cliente']})" if row['tipo_cliente'] else ""
-            st.markdown(f"**{row['cliente']}** {tipo_label} - {row['localita']}")
+            st.markdown(f"**{row['cliente']}** {tipo_label}")
             st.caption(f"📅 {msg_scadenza} | Note: {row['note']}")
             
-            # --- RIGA 1: I giorni e chiusura (+1, +7, +15, Fatto) ---
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 if st.button("+1 ☀️", key=f"p1_{row_id}", use_container_width=True):
@@ -334,7 +274,6 @@ if not df_scadenze.empty:
             with c4:
                 st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                     
-            # --- RIGA 2: Date specifiche (Oggi 18:30, Prox. Lunedì, Prox. Venerdì) ---
             c5, c6, c7 = st.columns(3)
             with c5:
                 st.button("🕔 Oggi 18:30", key=f"o1830_{row_id}", use_container_width=True, on_click=set_fup_oggi_1830, args=(row_id,))
@@ -347,14 +286,13 @@ if not df_scadenze.empty:
 st.subheader("🔍 Archivio Visite")
 
 f1, f2, f3 = st.columns([1.5, 1, 1])
-t_ricerca = f1.text_input("Cerca Cliente, Città o Note") 
+t_ricerca = f1.text_input("Cerca Cliente o Note") 
 
 oggi_dt = datetime.today().date()
 periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
 
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-# Aggiunto il quarto filtro sulla riga
 f4, f5, f6, f7 = st.columns(4)
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
@@ -370,9 +308,7 @@ if st.session_state.ricerca_attiva:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
     if t_ricerca:
-        # Ora la ricerca cerca dentro cliente, località e anche dentro le note
         df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | 
-                df['localita'].str.contains(t_ricerca, case=False, na=False) |
                 df['note'].str.contains(t_ricerca, case=False, na=False)]
     if f_agente != "Tutti":
         df = df[df['agente'] == f_agente]
@@ -387,7 +323,6 @@ if st.session_state.ricerca_attiva:
     elif f_referente == "Senza Referente":
         df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
     
-    # Filtro sulla colonna autonomia
     if f_autonomia == "In Autonomia":
         df = df[df['visita_autonoma'] == 1]
     elif f_autonomia == "In Affiancamento":
@@ -414,6 +349,7 @@ if st.session_state.ricerca_attiva:
             key_conf = f"confirm_del_{row_id}"
             tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(key_conf, False)
             
+            # Nascondiamo la località anche dal titolo dell'expander
             with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                 
                 # --- MODALITÀ MODIFICA (ARCHIVIO) ---
@@ -440,9 +376,6 @@ if st.session_state.ricerca_attiva:
                         st.write("")
                         st.checkbox("🚶‍♂️ In Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
                     
-                    st.text_input("Località", value=str(row['localita'] or ""), key=f"e_loc_{row_id}")
-                    st.text_input("Prov.", value=str(row['provincia'] or ""), max_chars=2, key=f"e_prov_{row_id}")
-                    
                     st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
                     
                     fup_attuale = row['data_followup']
@@ -465,8 +398,6 @@ if st.session_state.ricerca_attiva:
                     if ref_val or tel_val:
                         st.write(f"👤 **Referente:** {ref_val} | 📞 **Tel:** {tel_val}")
                         
-                    st.write(f"**Località:** {row['localita']} ({row['provincia']})")
-                    
                     st.text_area("Note:", value=str(row['note'] or ""), height=250, key=f"v_note_{row_id}")
                     
                     is_copied = True if row.get('copiato_crm') == 1 else False
@@ -481,10 +412,6 @@ if st.session_state.ricerca_attiva:
                                 data_fup_it = datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
                             st.write(f"📅 **Ricontatto:** {data_fup_it}")
                         except: pass
-
-                    if row['latitudine'] and row['longitudine']:
-                        mappa_url = f"https://www.google.com/maps?q={row['latitudine']},{row['longitudine']}"
-                        st.markdown(f"📍 [Apri in Maps]({mappa_url})")
                     
                     cb_m, cb_d = st.columns([1, 1])
                     cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", on_click=set_edit_mode, args=(row_id,))
@@ -526,6 +453,7 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                         c.execute("DROP TABLE IF EXISTS visite")
                         conn.commit()
                         
+                        # STRUTTURA INTACTA ANCHE QUI
                         c.execute('''CREATE TABLE visite 
                                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
