@@ -209,12 +209,13 @@ with tab_nuova:
     st.write("### Compila Dati Incontro")
     
     with st.container(border=True):
-        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
+        # Aggiunto autocomplete="off" per bloccare i fastidiosi suggerimenti
+        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...", autocomplete="off")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
         
         c_ref, c_tel = st.columns(2)
-        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
-        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
+        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...", autocomplete="off")
+        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...", autocomplete="off")
         
         st.markdown("---")
         c_dt, c_ag = st.columns(2)
@@ -227,7 +228,6 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
-        # ALTEZZA RADDOPPIATA (height=300)
         st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
@@ -277,7 +277,8 @@ with tab_scadenze:
 with tab_archivio:
     st.write("### Consulta Database Visite")
     
-    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
+    # Aggiunto autocomplete="off" anche qui
+    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...", autocomplete="off") 
     periodo = st.date_input("Periodo Visita", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
     
     with st.expander("⚙️ Filtri Avanzati (Tocca per aprire)"):
@@ -339,12 +340,13 @@ with tab_archivio:
                 with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                     if st.session_state.edit_mode_id == row_id:
                         st.info("✏️ Modifica Dati Attiva")
-                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}")
+                        # Aggiunto autocomplete="off" in tutti i campi di modifica
+                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}", autocomplete="off")
                         st.selectbox("Stato", ["Prospect", "Cliente"], index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
                         
                         c_rt1, c_rt2 = st.columns(2)
-                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}")
-                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}")
+                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}", autocomplete="off")
+                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}", autocomplete="off")
 
                         st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
                         
@@ -353,7 +355,6 @@ with tab_archivio:
                         with ca2: st.checkbox("🚀 C.N.G.", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
                         with ca3: st.checkbox("🔄 Cross S.", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
                         
-                        # ALTEZZA RADDOPPIATA (height=300)
                         st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=300, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
                         
                         fup_attuale = row['data_followup']
