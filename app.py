@@ -185,7 +185,6 @@ try:
     with open("logo.jpg", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
     
-    # Questo pezzo di codice forza l'allineamento orizzontale su un'unica riga! (60 pixel esatti)
     st.markdown(f"""
     <div style="display: flex; align-items: center; justify-content: flex-start; gap: 15px; margin-bottom: 20px;">
         <h1 style="margin: 0; padding: 0; font-size: 2.2rem; display: inline;">💼 CRM Michelone</h1>
@@ -193,7 +192,7 @@ try:
     </div>
     """, unsafe_allow_html=True)
 except Exception:
-    st.title("💼 CRM Michelone") # Testo di sicurezza nel caso il logo manchi
+    st.title("💼 CRM Michelone") 
 
 if num_scadenze > 0:
     st.error(f"⚠️ Attenzione Michelone! Hai **{num_scadenze}** ricontatti urgenti da gestire.")
@@ -228,7 +227,8 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
-        st.text_area("Note / Resoconto", key="note_key", height=150, placeholder="Scrivi Qui...")
+        # ALTEZZA RADDOPPIATA (height=300)
+        st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
@@ -353,7 +353,8 @@ with tab_archivio:
                         with ca2: st.checkbox("🚀 C.N.G.", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
                         with ca3: st.checkbox("🔄 Cross S.", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
                         
-                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=150, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
+                        # ALTEZZA RADDOPPIATA (height=300)
+                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=300, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
                         
                         fup_attuale = row['data_followup']
                         if st.checkbox("Pianifica Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}"):
