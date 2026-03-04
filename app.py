@@ -16,7 +16,7 @@ if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
-        # STRUTTURA ORIGINALE INTACTA + NUOVO CAMPO
+        # STRUTTURA ORIGINALE INTACTA + NUOVI CAMPI
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -25,7 +25,8 @@ def inizializza_db():
                       latitudine TEXT, longitudine TEXT,
                       referente TEXT, telefono TEXT,
                       visita_autonoma INTEGER DEFAULT 0,
-                      customer_net_gain INTEGER DEFAULT 0)''')
+                      customer_net_gain INTEGER DEFAULT 0,
+                      operazioni_cross_selling INTEGER DEFAULT 0)''')
         
         # --- MIGRAZIONI AUTOMATICHE PER VECCHI DATABASE ---
         try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
@@ -41,6 +42,9 @@ def inizializza_db():
         except: pass
 
         try: c.execute("ALTER TABLE visite ADD COLUMN customer_net_gain INTEGER DEFAULT 0")
+        except: pass
+
+        try: c.execute("ALTER TABLE visite ADD COLUMN operazioni_cross_selling INTEGER DEFAULT 0")
         except: pass
             
         conn.commit()
@@ -97,6 +101,7 @@ def salva_visita():
     telefono = s.get('telefono_key', '').strip()
     autonomia = 1 if s.get('autonomia_key', False) else 0
     cng = 1 if s.get('cng_key', False) else 0
+    cross = 1 if s.get('cross_key', False) else 0
     
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
@@ -124,10 +129,10 @@ def salva_visita():
             
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                  data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
-                                 referente, telefono, visita_autonoma, customer_net_gain) 
-                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?)""", 
+                                 referente, telefono, visita_autonoma, customer_net_gain, operazioni_cross_selling) 
+                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?, ?)""", 
                       (cliente, tipo, data_visita_fmt, note, data_fup, data_ord, 
-                       s.agente_key, referente, telefono, autonomia, cng))
+                       s.agente_key, referente, telefono, autonomia, cng, cross))
             conn.commit()
         
         # Reset dei campi
@@ -138,6 +143,7 @@ def salva_visita():
         st.session_state.fup_opt = "No"
         st.session_state.autonomia_key = False
         st.session_state.cng_key = False
+        st.session_state.cross_key = False
         
         st.toast("✅ Visita salvata!", icon="💾")
     else:
@@ -188,6 +194,7 @@ def execute_save_modifica(id_val):
     new_tel = s.get(f"e_tel_{id_val}", "")
     new_aut = 1 if s.get(f"e_aut_{id_val}", False) else 0
     new_cng = 1 if s.get(f"e_cng_{id_val}", False) else 0
+    new_cross = 1 if s.get(f"e_cross_{id_val}", False) else 0
     
     new_fup = ""
     if s.get(f"e_chk_{id_val}", False):
@@ -195,8 +202,8 @@ def execute_save_modifica(id_val):
         if dt: new_fup = dt.strftime("%Y-%m-%d")
         
     with sqlite3.connect('crm_mobile.db') as conn:
-        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=?, customer_net_gain=? WHERE id=?""",
-                     (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, new_cng, id_val))
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=?, customer_net_gain=?, operazioni_cross_selling=? WHERE id=?""",
+                     (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, new_cng, new_cross, id_val))
         conn.commit()
     st.session_state.edit_mode_id = None
 
@@ -226,13 +233,17 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.markdown("---")
     
-    c1, c2, c3 = st.columns([1.5, 1.5, 1.5])
+    # Riorganizzato in due righe più pulite
+    c1, c2 = st.columns(2)
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
-    with c3:
-        st.write("") 
-        st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
-        st.checkbox("🚀 Customer Net Gain", key="cng_key")
+    
+    # Nuova riga per le etichette speciali
+    st.write("")
+    ck1, ck2, ck3 = st.columns(3)
+    with ck1: st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
+    with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
+    with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
     
     st.text_area("Note", key="note_key", height=250)
     
@@ -302,23 +313,27 @@ if not df_scadenze.empty:
 # --- RICERCA E ARCHIVIO ---
 st.subheader("🔍 Archivio Visite")
 
-f1, f2, f3 = st.columns([1.5, 1, 1])
+# Filtri principali
+f1, f2 = st.columns([1.5, 1])
 t_ricerca = f1.text_input("Cerca Cliente o Note") 
-
 oggi_dt = datetime.today().date()
 periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
 
-f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-
-# Filtri divisi su due righe per evitare che si schiaccino troppo
-f4, f5, f6 = st.columns(3)
-f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
-f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
-f_referente = f6.selectbox("Filtra Referente", ["Tutti", "Con Referente", "Senza Referente"])
-
-f7, f8 = st.columns(2)
-f_autonomia = f7.selectbox("Autonomia", ["Tutte", "In Autonomia", "In Affiancamento"])
-f_cng = f8.selectbox("Customer Net Gain", ["Tutti", "Sì", "No"])
+# Filtri Avanzati dentro una tendina per non ingombrare la pagina
+with st.expander("⚙️ Filtri Avanzati"):
+    c_f1, c_f2, c_f3 = st.columns(3)
+    f_agente = c_f1.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
+    f_tipo = c_f2.selectbox("Tipo", ["Tutti", "Prospect", "Cliente"])
+    f_stato_crm = c_f3.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
+    
+    st.write("")
+    c_f4, c_f5 = st.columns(2)
+    f_referente = c_f4.selectbox("Referente", ["Tutti", "Con Referente", "Senza Referente"])
+    f_autonomia = c_f5.selectbox("Autonomia", ["Tutte", "In Autonomia", "In Affiancamento"])
+    
+    c_f6, c_f7 = st.columns(2)
+    f_cng = c_f6.selectbox("Customer Net Gain", ["Tutti", "Sì", "No"])
+    f_cross = c_f7.selectbox("Cross Selling", ["Tutti", "Sì", "No"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -328,6 +343,7 @@ if st.session_state.ricerca_attiva:
     with sqlite3.connect('crm_mobile.db') as conn:
         df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     
+    # Applica filtri
     if t_ricerca:
         df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | 
                 df['note'].str.contains(t_ricerca, case=False, na=False)]
@@ -343,16 +359,18 @@ if st.session_state.ricerca_attiva:
         df = df[(df['referente'].notnull()) & (df['referente'].str.strip() != '')]
     elif f_referente == "Senza Referente":
         df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
-    
     if f_autonomia == "In Autonomia":
         df = df[df['visita_autonoma'] == 1]
     elif f_autonomia == "In Affiancamento":
         df = df[(df['visita_autonoma'] == 0) | (df['visita_autonoma'].isnull())]
-        
     if f_cng == "Sì":
         df = df[df['customer_net_gain'] == 1]
     elif f_cng == "No":
         df = df[(df['customer_net_gain'] == 0) | (df['customer_net_gain'].isnull())]
+    if f_cross == "Sì":
+        df = df[df['operazioni_cross_selling'] == 1]
+    elif f_cross == "No":
+        df = df[(df['operazioni_cross_selling'] == 0) | (df['operazioni_cross_selling'].isnull())]
 
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
@@ -391,16 +409,13 @@ if st.session_state.ricerca_attiva:
                     with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), key=f"e_ref_{row_id}")
                     with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), key=f"e_tel_{row_id}")
 
-                    c_a1, c_a2 = st.columns(2)
-                    with c_a1:
-                        lista_agenti = ["HSE", "BIENNE", "PALAGI", "SARDEGNA"]
-                        try: idx_ag = lista_agenti.index(row['agente'])
-                        except: idx_ag = 0
-                        st.selectbox("Agente", lista_agenti, index=idx_ag, key=f"e_ag_{row_id}")
-                    with c_a2:
-                        st.write("")
-                        st.checkbox("🚶‍♂️ In Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
-                        st.checkbox("🚀 Customer Net Gain", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
+                    st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
+                    
+                    st.write("Dettagli:")
+                    ca1, ca2, ca3 = st.columns(3)
+                    with ca1: st.checkbox("🚶‍♂️ In Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
+                    with ca2: st.checkbox("🚀 C. Net Gain", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
+                    with ca3: st.checkbox("🔄 Cross Selling", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
                     
                     st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
                     
@@ -417,9 +432,10 @@ if st.session_state.ricerca_attiva:
                 # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
                     aut_text = "🚶‍♂️ In Autonomia" if row.get('visita_autonoma') == 1 else "🤝 In Affiancamento"
-                    cng_text = " | 🚀 Customer Net Gain" if row.get('customer_net_gain') == 1 else ""
+                    cng_text = " | 🚀 C. Net Gain" if row.get('customer_net_gain') == 1 else ""
+                    cross_text = " | 🔄 Cross Selling" if row.get('operazioni_cross_selling') == 1 else ""
                     
-                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']} | {aut_text}{cng_text}")
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']} | {aut_text}{cng_text}{cross_text}")
                     
                     ref_val = row.get('referente', '')
                     tel_val = row.get('telefono', '')
@@ -488,7 +504,8 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
                                       referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0,
-                                      customer_net_gain INTEGER DEFAULT 0)''')
+                                      customer_net_gain INTEGER DEFAULT 0,
+                                      operazioni_cross_selling INTEGER DEFAULT 0)''')
                         conn.commit()
                         
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
