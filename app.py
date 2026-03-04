@@ -209,7 +209,6 @@ with tab_nuova:
     st.write("### Compila Dati Incontro")
     
     with st.container(border=True):
-        # Rimossi gli autocomplete per tornare al comportamento naturale della tastiera
         st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
         
@@ -231,7 +230,8 @@ with tab_nuova:
         st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
-        st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+        # Sostituiti i pallini radio con un comodo menu a tendina!
+        st.selectbox("Seleziona una data", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", label_visibility="collapsed")
         
     st.write("")
     st.button("💾 SALVA NEL CRM MICHELONE", on_click=salva_visita, type="primary", use_container_width=True)
