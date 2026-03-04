@@ -141,7 +141,11 @@ def aggiorna_fup(id_val, query_mod, params):
         conn.execute(query_mod, params)
         conn.commit()
 
-def posticipa_fup(id_val): aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", ((datetime.now() + timedelta(days=st.session_state.get('temp_giorni', 0))).strftime("%Y-%m-%d"), id_val))
+# Nuova funzione unificata per posticipare in modo diretto senza ricaricare l'intera logica session_state
+def posticipa_fup_diretto(id_val, giorni):
+    nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
+    aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
+
 def set_fup_prox(id_val, gg): aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (calcola_prossimo_giorno(datetime.now(), gg), id_val))
 def set_fup_alle_1700(id_val): 
     now = datetime.now()
@@ -175,13 +179,12 @@ with sqlite3.connect('crm_mobile.db') as conn:
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 
 num_scadenze = len(df_scadenze)
-badge_scadenze = f"⏰ Scadenze ({num_scadenze})" if num_scadenze > 0 else "✅ Nessuna Scadenza"
-
 
 # --- COSTRUZIONE TABS ---
 st.title("💼 CRM Michelone")
 
-tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova Visita", badge_scadenze, "🔍 Archivio", "⚙️ Setup"])
+# I nomi delle tab rimangono identici così Streamlit non ricarica sbalzandoci fuori
+tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova Visita", "⏰ Scadenze", "🔍 Archivio", "⚙️ Setup"])
 
 # ==========================================
 # TAB 1: NUOVA VISITA
@@ -189,7 +192,6 @@ tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova Visita", 
 with tab_nuova:
     st.write("### Compila Dati Visita")
     
-    # Box per evidenziare visivamente l'inserimento
     with st.container(border=True):
         st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
@@ -213,7 +215,6 @@ with tab_nuova:
         st.markdown("**📅 Pianifica Ricontatto:**")
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
         
-    # Tasto gigante e prominente
     st.write("")
     st.button("💾 SALVA NEL CRM", on_click=salva_visita, type="primary", use_container_width=True)
 
@@ -241,14 +242,11 @@ with tab_scadenze:
                 st.caption(f"⏰ **Scadenza:** {msg_scadenza}")
                 st.info(f"**Note:** {row['note']}")
                 
-                # Bottoni posticipo compatti
+                # Bottoni posticipo ottimizzati con on_click e args per non far saltare la tab
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: 
-                    if st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True): st.session_state.temp_giorni = 1; posticipa_fup(row_id); st.rerun()
-                with c2: 
-                    if st.button("+7 gg", key=f"p7_{row_id}", use_container_width=True): st.session_state.temp_giorni = 7; posticipa_fup(row_id); st.rerun()
-                with c3: 
-                    if st.button("+15 gg", key=f"p15_{row_id}", use_container_width=True): st.session_state.temp_giorni = 15; posticipa_fup(row_id); st.rerun()
+                with c1: st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
+                with c2: st.button("+7 gg", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 7))
+                with c3: st.button("+15 gg", key=f"p15_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 15))
                 with c4: st.button("✅ Fatto", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
                         
                 c5, c6, c7 = st.columns(3)
@@ -256,7 +254,7 @@ with tab_scadenze:
                 with c6: st.button("➡️ Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
                 with c7: st.button("➡️ Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
     else:
-        st.success("🎉 Grandioso! Non hai nessuna scadenza in arretrato.")
+        st.success("Grandioso! Non hai nessuna scadenza in arretrato.")
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
