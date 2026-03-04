@@ -16,7 +16,7 @@ if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
-        # STRUTTURA ORIGINALE INTACTA
+        # STRUTTURA ORIGINALE INTACTA + NUOVO CAMPO
         c.execute('''CREATE TABLE IF NOT EXISTS visite 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       cliente TEXT, localita TEXT, provincia TEXT,
@@ -24,7 +24,8 @@ def inizializza_db():
                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                       latitudine TEXT, longitudine TEXT,
                       referente TEXT, telefono TEXT,
-                      visita_autonoma INTEGER DEFAULT 0)''')
+                      visita_autonoma INTEGER DEFAULT 0,
+                      customer_net_gain INTEGER DEFAULT 0)''')
         
         # --- MIGRAZIONI AUTOMATICHE PER VECCHI DATABASE ---
         try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
@@ -37,6 +38,9 @@ def inizializza_db():
         except: pass
 
         try: c.execute("ALTER TABLE visite ADD COLUMN visita_autonoma INTEGER DEFAULT 0")
+        except: pass
+
+        try: c.execute("ALTER TABLE visite ADD COLUMN customer_net_gain INTEGER DEFAULT 0")
         except: pass
             
         conn.commit()
@@ -92,6 +96,7 @@ def salva_visita():
     referente = s.get('referente_key', '').strip()
     telefono = s.get('telefono_key', '').strip()
     autonomia = 1 if s.get('autonomia_key', False) else 0
+    cng = 1 if s.get('cng_key', False) else 0
     
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
@@ -119,10 +124,10 @@ def salva_visita():
             
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                  data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
-                                 referente, telefono, visita_autonoma) 
-                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?)""", 
+                                 referente, telefono, visita_autonoma, customer_net_gain) 
+                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?)""", 
                       (cliente, tipo, data_visita_fmt, note, data_fup, data_ord, 
-                       s.agente_key, referente, telefono, autonomia))
+                       s.agente_key, referente, telefono, autonomia, cng))
             conn.commit()
         
         # Reset dei campi
@@ -132,6 +137,7 @@ def salva_visita():
         st.session_state.telefono_key = ""
         st.session_state.fup_opt = "No"
         st.session_state.autonomia_key = False
+        st.session_state.cng_key = False
         
         st.toast("✅ Visita salvata!", icon="💾")
     else:
@@ -153,7 +159,6 @@ def set_fup_prox(id_val, giorno_settimana):
 
 def set_fup_alle_1700(id_val):
     now = datetime.now()
-    # Se clicchi il pulsante dopo le 17:00, imposta automaticamente per DOMANI alle 17:00
     if now.hour >= 17:
         nuova_data = (now + timedelta(days=1)).strftime("%Y-%m-%d") + " 17:00"
     else:
@@ -182,6 +187,7 @@ def execute_save_modifica(id_val):
     new_ref = s.get(f"e_ref_{id_val}", "")
     new_tel = s.get(f"e_tel_{id_val}", "")
     new_aut = 1 if s.get(f"e_aut_{id_val}", False) else 0
+    new_cng = 1 if s.get(f"e_cng_{id_val}", False) else 0
     
     new_fup = ""
     if s.get(f"e_chk_{id_val}", False):
@@ -189,8 +195,8 @@ def execute_save_modifica(id_val):
         if dt: new_fup = dt.strftime("%Y-%m-%d")
         
     with sqlite3.connect('crm_mobile.db') as conn:
-        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=? WHERE id=?""",
-                     (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, id_val))
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=?, customer_net_gain=? WHERE id=?""",
+                     (new_cli, new_tipo, new_note, new_ag, new_fup, new_ref, new_tel, new_aut, new_cng, id_val))
         conn.commit()
     st.session_state.edit_mode_id = None
 
@@ -220,12 +226,13 @@ with st.expander("➕ REGISTRA NUOVA VISITA", expanded=False):
     
     st.markdown("---")
     
-    c1, c2, c3 = st.columns([1.5, 1.5, 1])
+    c1, c2, c3 = st.columns([1.5, 1.5, 1.5])
     with c1: st.date_input("Data", datetime.now(), key="data_key")
     with c2: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
     with c3:
         st.write("") 
         st.checkbox("🚶‍♂️ In Autonomia", key="autonomia_key")
+        st.checkbox("🚀 Customer Net Gain", key="cng_key")
     
     st.text_area("Note", key="note_key", height=250)
     
@@ -286,7 +293,6 @@ if not df_scadenze.empty:
                     
             c5, c6, c7 = st.columns(3)
             with c5:
-                # Modificato pulsante in "Alle 17:00"
                 st.button("🕔 Alle 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_alle_1700, args=(row_id,))
             with c6:
                 st.button("➡️ P. Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
@@ -304,11 +310,15 @@ periodo = f2.date_input("Periodo", [oggi_dt - timedelta(days=60), oggi_dt])
 
 f_agente = f3.selectbox("Filtra Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
 
-f4, f5, f6, f7 = st.columns(4)
+# Filtri divisi su due righe per evitare che si schiaccino troppo
+f4, f5, f6 = st.columns(3)
 f_tipo = f4.selectbox("Filtra Tipo", ["Tutti", "Prospect", "Cliente"])
 f_stato_crm = f5.selectbox("Stato CRM", ["Tutti", "Da Caricare", "Caricati"])
 f_referente = f6.selectbox("Filtra Referente", ["Tutti", "Con Referente", "Senza Referente"])
+
+f7, f8 = st.columns(2)
 f_autonomia = f7.selectbox("Autonomia", ["Tutte", "In Autonomia", "In Affiancamento"])
+f_cng = f8.selectbox("Customer Net Gain", ["Tutti", "Sì", "No"])
 
 if st.button("🔎 CERCA VISITE", use_container_width=True):
     st.session_state.ricerca_attiva = True
@@ -338,6 +348,11 @@ if st.session_state.ricerca_attiva:
         df = df[df['visita_autonoma'] == 1]
     elif f_autonomia == "In Affiancamento":
         df = df[(df['visita_autonoma'] == 0) | (df['visita_autonoma'].isnull())]
+        
+    if f_cng == "Sì":
+        df = df[df['customer_net_gain'] == 1]
+    elif f_cng == "No":
+        df = df[(df['customer_net_gain'] == 0) | (df['customer_net_gain'].isnull())]
 
     if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
          df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
@@ -385,6 +400,7 @@ if st.session_state.ricerca_attiva:
                     with c_a2:
                         st.write("")
                         st.checkbox("🚶‍♂️ In Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
+                        st.checkbox("🚀 Customer Net Gain", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
                     
                     st.text_area("Note", value=str(row['note'] or ""), height=250, key=f"e_note_{row_id}")
                     
@@ -401,7 +417,9 @@ if st.session_state.ricerca_attiva:
                 # --- MODALITÀ VISUALIZZAZIONE (ARCHIVIO) ---
                 else:
                     aut_text = "🚶‍♂️ In Autonomia" if row.get('visita_autonoma') == 1 else "🤝 In Affiancamento"
-                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']} | {aut_text}")
+                    cng_text = " | 🚀 Customer Net Gain" if row.get('customer_net_gain') == 1 else ""
+                    
+                    st.write(f"**Stato:** {row['tipo_cliente']} | **Agente:** {row['agente']} | {aut_text}{cng_text}")
                     
                     ref_val = row.get('referente', '')
                     tel_val = row.get('telefono', '')
@@ -469,7 +487,8 @@ with st.expander("🛠️ AMMINISTRAZIONE E BACKUP"):
                                       tipo_cliente TEXT, data TEXT, note TEXT,
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
                                       latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
-                                      referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0)''')
+                                      referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0,
+                                      customer_net_gain INTEGER DEFAULT 0)''')
                         conn.commit()
                         
                         df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
