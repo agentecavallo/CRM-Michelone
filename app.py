@@ -186,15 +186,19 @@ num_scadenze = len(df_scadenze)
 # ==========================================
 st.title("💼 CRM Michelone")
 
-# Colonnaggio responsive per centrare il logo e mantenerlo piccolo e nitido
-# Se l'immagine è alta risoluzione, la costrizione della colonna lo rende nitidissimo.
-cl_l, cl_c, cl_r = st.columns([1.5, 1, 1.5]) 
+# Colonnaggio responsive per centrare il logo, mantenerlo piccolo (un quinto) e nitido
+# Questa configurazione costringe l'immagine a rimanere molto piccola senza perdere qualità nativa.
+cl_l, cl_c, cl_r = st.columns([2.5, 1, 2.5]) 
 with cl_c:
     try:
         st.image("logo.jpg", use_container_width=True)
         st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
     except Exception:
         st.caption("Firma non trovata")
+
+# --- ALERT SCADENZE URGENTI (Nuova Funzionalità) ---
+if num_scadenze > 0:
+    st.error(f"⚠️ Attenzione Michelone! Hai **{num_scadenze}** ricontatti urgenti da gestire oggi.")
 
 st.write("") 
 
@@ -209,12 +213,12 @@ with tab_nuova:
     st.write("### Compila Dati Incontro")
     
     with st.container(border=True):
-        st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
+        st.text_input("Nome Cliente", key="cliente_key", placeholder="Azienda S.p.A.")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
         
         c_ref, c_tel = st.columns(2)
-        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
-        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
+        with c_ref: st.text_input("Referente", key="referente_key", placeholder="Mario Rossi")
+        with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="info@... o 333...")
         
         st.markdown("---")
         c_dt, c_ag = st.columns(2)
@@ -227,7 +231,7 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
-        st.text_area("Note / Resoconto", key="note_key", height=150, placeholder="Scrivi Qui...")
+        st.text_area("Note / Resoconto", key="note_key", height=150, placeholder="Dettagli dell'incontro...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
@@ -282,7 +286,7 @@ with tab_scadenze:
 with tab_archivio:
     st.write("### Consulta Database Visite")
     
-    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
+    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Cerca qui...") 
     periodo = st.date_input("Periodo Visita", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
     
     with st.expander("⚙️ Filtri Avanzati (Tocca per aprire)"):
@@ -349,12 +353,12 @@ with tab_archivio:
                     # --- MODALITÀ MODIFICA (ARCHIVIO) ---
                     if st.session_state.edit_mode_id == row_id:
                         st.info("✏️ Modifica Dati Attiva")
-                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}")
+                        st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Azienda S.p.A.", key=f"e_cli_{row_id}")
                         st.selectbox("Stato", ["Prospect", "Cliente"], index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
                         
                         c_rt1, c_rt2 = st.columns(2)
-                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}")
-                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}")
+                        with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Mario Rossi", key=f"e_ref_{row_id}")
+                        with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="333...", key=f"e_tel_{row_id}")
 
                         st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
                         
@@ -363,7 +367,7 @@ with tab_archivio:
                         with ca2: st.checkbox("🚀 C.N.G.", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
                         with ca3: st.checkbox("🔄 Cross S.", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
                         
-                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=150, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
+                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=150, placeholder="Note...", key=f"e_note_{row_id}")
                         
                         fup_attuale = row['data_followup']
                         if st.checkbox("Pianifica Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}"):
@@ -425,11 +429,11 @@ with tab_setup:
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer: df_full.to_excel(writer, index=False)
     
-    st.download_button("📥 SCARICA TUTTO IL DB (EXCEL)", output.getvalue(), "backup_crm_michelone_completo.xlsx", type="primary", use_container_width=True)
+    st.download_button("📥 ESPORTA TUTTO IL DB (EXCEL)", output.getvalue(), "backup_crm_michelone_completo.xlsx", type="primary", use_container_width=True)
     
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI (Sovrascrittura Completa)**")
-    st.caption(" ATTENZIONE: i dati attuali nel telefono verranno cancellati e sostituiti da quelli del fileExcel.")
+    st.caption("⚠️ ATTENZIONE: i dati attuali nel telefono verranno cancellati e sostituiti da quelli del file Excel.")
     file_caricato = st.file_uploader("Seleziona file Excel di backup", type=["xlsx"], key="restore_uploader")
     if file_caricato is not None:
         if st.button("⚠️ AVVIA RIPRISTINO (AZIONE IRREVERSIBILE)", type="primary", use_container_width=True):
