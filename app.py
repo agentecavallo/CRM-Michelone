@@ -14,10 +14,10 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # --- RUBRICA AGENTI WHATSAPP ---
 # Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39)
 NUMERI_AGENTI = {
-    "HSE": "+390000000000",
-    "BIENNE": "+390000000000",
-    "PALAGI": "+390000000000",
-    "SARDEGNA": "+390000000000"
+    "HSE": "+393472503027",
+    "BIENNE": "+39335458782",
+    "PALAGI": "+393343524289",
+    "SARDEGNA": "+393337392303"
 }
 
 # --- STILE CSS PERSONALIZZATO ---
@@ -527,3 +527,4 @@ with tab_setup:
 # Footer Minimal
 st.write("") 
 st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
+
