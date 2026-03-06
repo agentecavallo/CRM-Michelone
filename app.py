@@ -4,11 +4,21 @@ import pandas as pd
 import os
 import time
 import base64
+import urllib.parse  # <-- AGGIUNTO PER FORMATTARE IL TESTO PER WHATSAPP
 from datetime import datetime, timedelta
 from io import BytesIO
 
 # --- 1. CONFIGURAZIONE E DATABASE ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
+
+# --- RUBRICA AGENTI WHATSAPP ---
+# Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39 davanti)
+NUMERI_AGENTI = {
+    "HSE": "+390000000000",
+    "BIENNE": "+390000000000",
+    "PALAGI": "+390000000000",
+    "SARDEGNA": "+390000000000"
+}
 
 # --- STILE CSS PERSONALIZZATO (Il "Brio" e la Pulizia Mobile) ---
 st.markdown("""
@@ -94,6 +104,14 @@ def controllo_backup_automatico():
                 except: pass
 
 controllo_backup_automatico()
+
+# --- FUNZIONE CREAZIONE LINK WHATSAPP ---
+def genera_link_wa(agente, cliente, tipo, note):
+    numero = NUMERI_AGENTI.get(agente, "")
+    if not numero: return ""
+    messaggio = f"💼 *Resoconto Visita*\n👤 *Cliente:* {cliente} ({tipo})\n📝 *Note:*\n{note}"
+    messaggio_url = urllib.parse.quote(messaggio)
+    return f"https://wa.me/{numero}?text={messaggio_url}"
 
 def salva_visita():
     s = st.session_state
@@ -199,7 +217,7 @@ if num_scadenze > 0:
 st.write("") 
 
 # --- TABS ---
-tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova Visita", "⏰ Scadenze", "🔍 Archivio", "⚙️ Setup"])
+tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova", "⏰ Scadenze", "🔍 Archivio", "⚙️ Setup"])
 
 # ==========================================
 # TAB 1: NUOVA VISITA
@@ -226,8 +244,20 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
-        st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
+        st.text_area("Note / Resoconto", key="note_key", height=200, placeholder="Scrivi Qui...")
         
+        # --- TASTO WHATSAPP IN FASE DI INSERIMENTO ---
+        link_wa_nuovo = genera_link_wa(
+            st.session_state.get('agente_key', 'HSE'),
+            st.session_state.get('cliente_key', ''),
+            st.session_state.get('tipo_key', 'Prospect'),
+            st.session_state.get('note_key', '')
+        )
+        st.link_button("📲 INVIA RESOCONTO SU WHATSAPP (Prima di salvare)", link_wa_nuovo, use_container_width=True)
+        st.caption("*(Ricordati di cliccare fuori dalla casella Note prima di premere il tasto WhatsApp per fargli caricare il testo!)*")
+        # -----------------------------------------------
+
+        st.markdown("---")
         st.markdown("**📅 Pianifica Ricontatto:**")
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
         
@@ -269,7 +299,6 @@ with tab_scadenze:
     else:
         st.success("🎉 Grandioso! Nessun ricontatto in scadenza, tutto sotto controllo.")
         
-        # --- NUOVA FUNZIONALITÀ: SBIRCIATA NEL FUTURO ---
         with sqlite3.connect('crm_mobile.db') as conn:
             df_future = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup > '{oggi_limite}' ORDER BY data_followup ASC", conn)
         
@@ -397,9 +426,16 @@ with tab_archivio:
                             st.markdown(f"**📅 Ricontatto pianificato il:** {dt_fmt}")
                         
                         st.write("")
-                        cb_m, cb_d = st.columns(2)
+                        # --- QUI HO AGGIUNTO IL PULSANTE WHATSAPP NELL'ARCHIVIO ---
+                        cb_m, cb_w, cb_d = st.columns([1, 1, 1])
+                        
                         cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True, on_click=set_edit_mode, args=(row_id,))
+                        
+                        link_wa_archivio = genera_link_wa(row['agente'], row['cliente'], row['tipo_cliente'], row['note'])
+                        cb_w.link_button("📲 Invia WA", link_wa_archivio, use_container_width=True)
+                        
                         cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", use_container_width=True, on_click=ask_delete, args=(row_id,))
+                        # -----------------------------------------------------------
                         
                         if st.session_state.get(f"confirm_del_{row_id}", False):
                             st.warning("⚠️ Confermi l'eliminazione definitiva?")
@@ -459,7 +495,6 @@ with tab_setup:
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
                 st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f, file_name=file_selezionato, use_container_width=True)
             
-            # --- INIZIO NUOVO CODICE TASTO RIPRISTINO ---
             st.write("") 
             ultimo_backup = files_backup[0]
             st.warning(f"🔄 **Ripristino di Emergenza (Ultimo salvataggio: {ultimo_backup})**")
@@ -483,7 +518,6 @@ with tab_setup:
                     st.rerun()
                 except Exception as e: 
                     st.error(f"Errore durante il ripristino: {e}")
-            # --- FINE NUOVO CODICE TASTO RIPRISTINO ---
 
         else: 
             st.caption("Ancora nessun backup giornaliero automatico generato finora.")
