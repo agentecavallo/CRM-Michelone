@@ -4,7 +4,7 @@ import pandas as pd
 import os
 import time
 import base64
-import urllib.parse  # <-- AGGIUNTO PER FORMATTARE IL TESTO PER WHATSAPP
+import urllib.parse
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -12,29 +12,24 @@ from io import BytesIO
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
 
 # --- RUBRICA AGENTI WHATSAPP ---
-# Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39 davanti)
+# Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39)
 NUMERI_AGENTI = {
-    "HSE": "+393472503027",
-    "BIENNE": "+39335458782",
-    "PALAGI": "+393343524289",
-    "SARDEGNA": "+393337392303"
+    "HSE": "+390000000000",
+    "BIENNE": "+390000000000",
+    "PALAGI": "+390000000000",
+    "SARDEGNA": "+390000000000"
 }
 
-# --- STILE CSS PERSONALIZZATO (Il "Brio" e la Pulizia Mobile) ---
+# --- STILE CSS PERSONALIZZATO ---
 st.markdown("""
 <style>
-    /* Nasconde i menu di Streamlit per un look "App Nativa" */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Ottimizza gli spazi per schermi stretti (telefoni) */
     .block-container {
         padding-top: 0.5rem !important;
         padding-bottom: 2rem !important;
     }
-    
-    /* Rende i titoli delle schede e degli expander più leggibili */
     div[data-testid="stExpander"] div[role="button"] p, .stTabs button p {
         font-weight: bold !important;
         font-size: 1.05rem !important;
@@ -60,7 +55,6 @@ def inizializza_db():
                       customer_net_gain INTEGER DEFAULT 0,
                       operazioni_cross_selling INTEGER DEFAULT 0)''')
         
-        # Migrazioni
         try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
         except: pass 
         try: c.execute("ALTER TABLE visite ADD COLUMN referente TEXT DEFAULT ''")
@@ -73,7 +67,6 @@ def inizializza_db():
         except: pass
         try: c.execute("ALTER TABLE visite ADD COLUMN operazioni_cross_selling INTEGER DEFAULT 0")
         except: pass
-            
         conn.commit()
 
 inizializza_db()
@@ -105,12 +98,16 @@ def controllo_backup_automatico():
 
 controllo_backup_automatico()
 
-# --- FUNZIONE CREAZIONE LINK WHATSAPP ---
+# --- FUNZIONE CREAZIONE LINK WHATSAPP (CORRETTA) ---
 def genera_link_wa(agente, cliente, tipo, note):
     numero = NUMERI_AGENTI.get(agente, "")
     if not numero: return ""
-    messaggio = f"💼 *Resoconto Visita*\n👤 *Cliente:* {cliente} ({tipo})\n📝 *Note:*\n{note}"
-    messaggio_url = urllib.parse.quote(messaggio)
+    
+    # Testo pulito, formattato, SENZA EMOJI per evitare troncamenti
+    messaggio = f"*RESOCONTO VISITA*\n*Cliente:* {cliente} ({tipo})\n*Note:*\n{note}"
+    
+    # Codifica sicura in UTF-8
+    messaggio_url = urllib.parse.quote(messaggio.encode('utf-8'))
     return f"https://wa.me/{numero}?text={messaggio_url}"
 
 def salva_visita():
@@ -196,7 +193,7 @@ with sqlite3.connect('crm_mobile.db') as conn:
 num_scadenze = len(df_scadenze)
 
 # ==========================================
-# INTESTAZIONE CON TITOLO E LOGO SULLA STESSA RIGA
+# INTESTAZIONE CON TITOLO E LOGO 
 # ==========================================
 try:
     with open("logo.jpg", "rb") as image_file:
@@ -244,17 +241,19 @@ with tab_nuova:
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
         
+        # Le note
         st.text_area("Note / Resoconto", key="note_key", height=200, placeholder="Scrivi Qui...")
         
-        # --- TASTO WHATSAPP IN FASE DI INSERIMENTO ---
+        # --- TASTO WHATSAPP IN INSERIMENTO ---
+        # Avviso importante per l'utente per evitare che mandi un messaggio vuoto
+        st.caption("*(💡 Scrivi le note, clicca fuori dal riquadro per confermarle e poi premi il tasto qui sotto per inviare)*")
         link_wa_nuovo = genera_link_wa(
             st.session_state.get('agente_key', 'HSE'),
             st.session_state.get('cliente_key', ''),
             st.session_state.get('tipo_key', 'Prospect'),
             st.session_state.get('note_key', '')
         )
-        st.link_button("📲 INVIA RESOCONTO SU WHATSAPP (Prima di salvare)", link_wa_nuovo, use_container_width=True)
-        st.caption("*(Ricordati di cliccare fuori dalla casella Note prima di premere il tasto WhatsApp per fargli caricare il testo!)*")
+        st.link_button("📲 INVIA RESOCONTO SU WHATSAPP", link_wa_nuovo, use_container_width=True)
         # -----------------------------------------------
 
         st.markdown("---")
@@ -426,7 +425,8 @@ with tab_archivio:
                             st.markdown(f"**📅 Ricontatto pianificato il:** {dt_fmt}")
                         
                         st.write("")
-                        # --- QUI HO AGGIUNTO IL PULSANTE WHATSAPP NELL'ARCHIVIO ---
+                        
+                        # --- TASTO WHATSAPP IN ARCHIVIO ---
                         cb_m, cb_w, cb_d = st.columns([1, 1, 1])
                         
                         cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True, on_click=set_edit_mode, args=(row_id,))
@@ -524,8 +524,6 @@ with tab_setup:
     else: 
         st.caption("La cartella dei backup automatici verrà creata al primo salvataggio giornaliero.")
 
-
 # Footer Minimal
 st.write("") 
 st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
-
