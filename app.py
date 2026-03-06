@@ -177,7 +177,6 @@ with sqlite3.connect('crm_mobile.db') as conn:
     df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 num_scadenze = len(df_scadenze)
 
-
 # ==========================================
 # INTESTAZIONE CON TITOLO E LOGO SULLA STESSA RIGA
 # ==========================================
@@ -230,7 +229,6 @@ with tab_nuova:
         st.text_area("Note / Resoconto", key="note_key", height=300, placeholder="Scrivi Qui...")
         
         st.markdown("**📅 Pianifica Ricontatto:**")
-        # Ripristinati i vecchi e veloci bottoncini orizzontali!
         st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
         
     st.write("")
@@ -273,7 +271,6 @@ with tab_scadenze:
         
         # --- NUOVA FUNZIONALITÀ: SBIRCIATA NEL FUTURO ---
         with sqlite3.connect('crm_mobile.db') as conn:
-            # Peschiamo dal database tutte le date_followup maggiori di oggi (nel futuro) in ordine crescente
             df_future = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup > '{oggi_limite}' ORDER BY data_followup ASC", conn)
         
         if not df_future.empty:
@@ -281,7 +278,6 @@ with tab_scadenze:
             st.markdown("### 🔮 Prossime Scadenze in Arrivo")
             for _, row in df_future.iterrows():
                 fup_str = row['data_followup']
-                # Formattiamo la data per farla sembrare più leggibile (es. 25/12/2024 alle 17:00)
                 dt_fmt = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M") if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
                 
                 with st.container(border=True):
@@ -462,8 +458,37 @@ with tab_setup:
             file_selezionato = st.selectbox("Seleziona il backup giornaliero da scaricare:", files_backup)
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
                 st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f, file_name=file_selezionato, use_container_width=True)
-        else: st.caption("Ancora nessun backup giornaliero automatico generato finora.")
-    else: st.caption("Cartella dei backup automatici verrà creata al primo salvataggio giornaliero.")
+            
+            # --- INIZIO NUOVO CODICE TASTO RIPRISTINO ---
+            st.write("") 
+            ultimo_backup = files_backup[0]
+            st.warning(f"🔄 **Ripristino di Emergenza (Ultimo salvataggio: {ultimo_backup})**")
+            
+            if st.button("⚠️ RIPRISTINA ORA ALL'ULTIMO BACKUP AUTOMATICO", type="primary", use_container_width=True):
+                try:
+                    df_ripristino = pd.read_excel(os.path.join(cartella_backup, ultimo_backup))
+                    with sqlite3.connect('crm_mobile.db') as conn:
+                        conn.execute("DROP TABLE IF EXISTS visite")
+                        conn.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                      cliente TEXT, localita TEXT, provincia TEXT,
+                                      tipo_cliente TEXT, data TEXT, note TEXT,
+                                      data_followup TEXT, data_ordine TEXT, agente TEXT,
+                                      latitudine TEXT, longitudine TEXT, copiato_crm INTEGER DEFAULT 0,
+                                      referente TEXT, telefono TEXT, visita_autonoma INTEGER DEFAULT 0,
+                                      customer_net_gain INTEGER DEFAULT 0, operazioni_cross_selling INTEGER DEFAULT 0)''')
+                        df_ripristino.to_sql('visite', conn, if_exists='append', index=False)
+                    st.success(f"✅ Dati ripristinati da {ultimo_backup}! Riavvio app in corso...")
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e: 
+                    st.error(f"Errore durante il ripristino: {e}")
+            # --- FINE NUOVO CODICE TASTO RIPRISTINO ---
+
+        else: 
+            st.caption("Ancora nessun backup giornaliero automatico generato finora.")
+    else: 
+        st.caption("La cartella dei backup automatici verrà creata al primo salvataggio giornaliero.")
 
 
 # Footer Minimal
