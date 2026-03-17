@@ -8,8 +8,41 @@ import urllib.parse
 from datetime import datetime, timedelta
 from io import BytesIO
 
-# --- 1. CONFIGURAZIONE E DATABASE ---
+# --- 1. CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centered")
+
+# ==========================================
+# 🔒 SISTEMA DI SICUREZZA E LOGIN
+# ==========================================
+PASSWORD_SEGRETA = "michelone2026"  # <-- Cambia questa password come preferisci
+
+def controlla_password():
+    # Se l'utente ha già fatto il login in questa sessione, lo facciamo passare
+    if st.session_state.get("login_effettuato", False):
+        return True
+
+    # Altrimenti mostriamo la pagina di login
+    st.markdown("## 🔒 Accesso Riservato")
+    st.info("Inserisci la password aziendale per accedere al CRM Michelone.")
+    
+    pwd_inserita = st.text_input("Password", type="password", placeholder="Scrivi la password qui...")
+    
+    if st.button("Entra", type="primary"):
+        if pwd_inserita == PASSWORD_SEGRETA:
+            st.session_state["login_effettuato"] = True
+            st.rerun()  # Ricarica la pagina per sbloccare l'app
+        else:
+            st.error("❌ Password errata. Riprova.")
+            
+    return False
+
+# Se la password non è corretta, fermiamo l'esecuzione del codice qui!
+if not controlla_password():
+    st.stop() 
+
+# ==========================================
+# DA QUI IN POI INIZIA L'APP VERA E PROPRIA
+# ==========================================
 
 # --- RUBRICA AGENTI WHATSAPP ---
 # Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39)
@@ -98,7 +131,7 @@ def controllo_backup_automatico():
 
 controllo_backup_automatico()
 
-# --- FUNZIONE CREAZIONE LINK WHATSAPP (CORRETTA) ---
+# --- FUNZIONE CREAZIONE LINK WHATSAPP ---
 def genera_link_wa(agente, cliente, tipo, note):
     numero = NUMERI_AGENTI.get(agente, "")
     if not numero: return ""
@@ -245,7 +278,6 @@ with tab_nuova:
         st.text_area("Note / Resoconto", key="note_key", height=200, placeholder="Scrivi Qui...")
         
         # --- TASTO WHATSAPP IN INSERIMENTO ---
-        # Avviso importante per l'utente per evitare che mandi un messaggio vuoto
         st.caption("*(💡 Scrivi le note, clicca fuori dal riquadro per confermarle e poi premi il tasto qui sotto per inviare)*")
         link_wa_nuovo = genera_link_wa(
             st.session_state.get('agente_key', 'HSE'),
@@ -285,6 +317,14 @@ with tab_scadenze:
                 st.caption(f"⏰ **In Scadenza:** {msg_scadenza}")
                 st.info(f"**Note Ultime:** {row['note']}")
                 
+                # --- NUOVO TASTO WHATSAPP PER PROMEMORIA SCADENZA ---
+                numero_agente = NUMERI_AGENTI.get(row['agente'], "")
+                if numero_agente:
+                    msg_wa = f"*PROMEMORIA SCADENZA*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
+                    link_wa = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_wa.encode('utf-8'))}"
+                    st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa, use_container_width=True)
+                # ----------------------------------------------------
+                
                 c1, c2, c3, c4 = st.columns([1, 1, 1, 1.3])
                 with c1: st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
                 with c2: st.button("+7 gg", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 7))
@@ -311,6 +351,14 @@ with tab_scadenze:
                 with st.container(border=True):
                     st.markdown(f"**{row['cliente']}**")
                     st.caption(f"📅 **{dt_fmt}**")
+                    
+                    # --- NUOVO TASTO WHATSAPP PER SCADENZE FUTURE ---
+                    numero_agente = NUMERI_AGENTI.get(row['agente'], "")
+                    if numero_agente:
+                        msg_futuro_wa = f"*PROMEMORIA FUTURO ({dt_fmt})*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
+                        link_wa_futuro = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_futuro_wa.encode('utf-8'))}"
+                        st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa_futuro, use_container_width=True)
+                    # ------------------------------------------------
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
