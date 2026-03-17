@@ -138,9 +138,9 @@ def salva_visita():
             elif scelta == "Prox. Venerdì": data_fup = calcola_prossimo_giorno(s.data_key, 4)
             
             c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
-                                 data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
-                                 referente, telefono, visita_autonoma, customer_net_gain, operazioni_cross_selling) 
-                                 VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?, ?)""", 
+                                             data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
+                                             referente, telefono, visita_autonoma, customer_net_gain, operazioni_cross_selling) 
+                                             VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?, ?)""", 
                       (cliente, tipo, data_visita_fmt, note, data_fup, data_ord, s.agente_key, referente, telefono, autonomia, cng, cross))
             conn.commit()
         
@@ -369,6 +369,35 @@ with tab_archivio:
             if c_res2.button("Chiudi ❌", use_container_width=True):
                 st.session_state.ricerca_attiva = False; st.rerun()
 
+            # --- INIZIO CREAZIONE REPORT PER FLAVIO ---
+            df_report = pd.DataFrame()
+            df_report['Data'] = df['data']
+            df_report['Agente'] = df['agente']
+            df_report['Cliente'] = df['cliente']
+            df_report['Note Visita'] = df['note']
+            
+            # Trasformiamo i numeri 1 in "X" e gli 0 in spazi vuoti per Autonomia, CNG e Cross
+            df_report['Autonomia'] = df['visita_autonoma'].apply(lambda x: 'X' if x == 1 else '')
+            df_report['CNG'] = df['customer_net_gain'].apply(lambda x: 'X' if x == 1 else '')
+            df_report['Cross Selling'] = df['operazioni_cross_selling'].apply(lambda x: 'X' if x == 1 else '')
+
+            # Creiamo il file Excel in memoria
+            output_report = BytesIO()
+            with pd.ExcelWriter(output_report, engine='xlsxwriter') as writer:
+                df_report.to_excel(writer, index=False, sheet_name='Report_Flavio')
+
+            # Tasto per scaricare
+            st.download_button(
+                label="📊 SCARICA REPORT PER FLAVIO (EXCEL)",
+                data=output_report.getvalue(),
+                file_name=f"Report_Flavio_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+            
+            st.markdown("---")
+            # --- FINE CREAZIONE REPORT PER FLAVIO ---
+
             for _, row in df.iterrows():
                 try: row_id = int(float(row['id']))
                 except: continue
@@ -527,4 +556,3 @@ with tab_setup:
 # Footer Minimal
 st.write("") 
 st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
-
