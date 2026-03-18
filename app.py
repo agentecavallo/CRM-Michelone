@@ -14,7 +14,7 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # ==========================================
 # 🔒 SISTEMA DI SICUREZZA E LOGIN
 # ==========================================
-PASSWORD_SEGRETA = "michelone2026"  # <-- Cambia questa password come preferisci
+PASSWORD_SEGRETA = "silvia13"  # <-- Cambia questa password come preferisci
 
 def controlla_password():
     # Se l'utente ha già fatto il login in questa sessione, lo facciamo passare
