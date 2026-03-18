@@ -14,29 +14,38 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # ==========================================
 # 🔒 SISTEMA DI SICUREZZA E LOGIN
 # ==========================================
-PASSWORD_SEGRETA = "silvia13"
+PASSWORD_SEGRETA = "silvia13"  # <-- Cambia questa password come preferisci
 
 def controlla_password():
+    # Se l'utente ha già fatto il login in questa sessione, lo facciamo passare
     if st.session_state.get("login_effettuato", False):
         return True
+
+    # Altrimenti mostriamo la pagina di login
     st.markdown("## 🔒 Accesso Riservato")
     st.info("Inserisci la password aziendale per accedere al CRM Michelone.")
+    
     pwd_inserita = st.text_input("Password", type="password", placeholder="Scrivi la password qui...")
+    
     if st.button("Entra", type="primary"):
         if pwd_inserita == PASSWORD_SEGRETA:
             st.session_state["login_effettuato"] = True
-            st.rerun()
+            st.rerun()  # Ricarica la pagina per sbloccare l'app
         else:
             st.error("❌ Password errata. Riprova.")
+            
     return False
 
+# Se la password non è corretta, fermiamo l'esecuzione del codice qui!
 if not controlla_password():
-    st.stop()
+    st.stop() 
 
 # ==========================================
 # DA QUI IN POI INIZIA L'APP VERA E PROPRIA
 # ==========================================
 
+# --- RUBRICA AGENTI WHATSAPP ---
+# Sostituisci gli "0000000000" con i numeri veri dei tuoi agenti (lascia il +39)
 NUMERI_AGENTI = {
     "HSE": "+393472503027",
     "BIENNE": "+39335458782",
@@ -44,313 +53,27 @@ NUMERI_AGENTI = {
     "SARDEGNA": "+393337392303"
 }
 
-# ==========================================
-# 🎨 STILE CSS — DARK CORPORATE GOLD
-# ==========================================
+# --- STILE CSS PERSONALIZZATO ---
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap');
-
-/* ── NASCONDI ELEMENTI STREAMLIT ── */
-#MainMenu {visibility: hidden;}
-footer {visibility: hidden;}
-header {visibility: hidden;}
-
-/* ── SFONDO & RADICE ── */
-html, body, [data-testid="stAppViewContainer"], [data-testid="stApp"] {
-    background-color: #0d0f14 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    color: #d4c9b8 !important;
-}
-[data-testid="stMain"], [data-testid="stMainBlockContainer"] {
-    background-color: #0d0f14 !important;
-}
-
-/* Griglia sottile di sfondo */
-[data-testid="stAppViewContainer"]::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-        linear-gradient(rgba(196,156,80,0.04) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(196,156,80,0.04) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
-}
-
-/* ── PADDING PRINCIPALE ── */
-.block-container {
-    padding-top: 1.5rem !important;
-    padding-bottom: 3rem !important;
-    max-width: 760px !important;
-    position: relative;
-    z-index: 1;
-}
-
-/* ── TITOLI ── */
-h1 {
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 700 !important;
-    font-size: 2.4rem !important;
-    letter-spacing: 0.04em !important;
-    background: linear-gradient(135deg, #c49c50 0%, #f0d080 50%, #c49c50 100%) !important;
-    -webkit-background-clip: text !important;
-    -webkit-text-fill-color: transparent !important;
-    background-clip: text !important;
-    margin-bottom: 0 !important;
-}
-h2, h3 {
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    color: #e8d9b8 !important;
-    letter-spacing: 0.03em !important;
-}
-h3 {
-    font-size: 1.25rem !important;
-    border-left: 3px solid #c49c50;
-    padding-left: 0.6rem;
-    margin-bottom: 1rem !important;
-}
-h4 {
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    color: #f0d080 !important;
-    font-size: 1.1rem !important;
-    margin-bottom: 0.2rem !important;
-}
-
-/* ── TABS ── */
-[data-testid="stTabs"] [role="tablist"] {
-    background: #141720 !important;
-    border-radius: 12px !important;
-    padding: 5px !important;
-    border: 1px solid #2a2d38 !important;
-    gap: 4px !important;
-}
-[data-testid="stTabs"] [role="tab"] {
-    background: transparent !important;
-    border-radius: 8px !important;
-    color: #7a7d8a !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-    letter-spacing: 0.03em !important;
-    border: none !important;
-    transition: all 0.25s ease !important;
-    padding: 6px 14px !important;
-}
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-    background: linear-gradient(135deg, #c49c50, #a07830) !important;
-    color: #0d0f14 !important;
-    box-shadow: 0 2px 12px rgba(196,156,80,0.35) !important;
-}
-[data-testid="stTabs"] [role="tab"] p,
-.stTabs button p {
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-}
-
-/* ── CONTAINER CON BORDO ── */
-[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlockBorderWrapper"] > div {
-    background: #141720 !important;
-    border: 1px solid #2a2d38 !important;
-    border-radius: 14px !important;
-    padding: 1.2rem !important;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(196,156,80,0.08) !important;
-    transition: border-color 0.3s ease !important;
-}
-[data-testid="stVerticalBlock"] > [data-testid="stVerticalBlockBorderWrapper"] > div:hover {
-    border-color: rgba(196,156,80,0.3) !important;
-}
-
-/* ── INPUT, TEXTAREA, SELECTBOX ── */
-[data-testid="stTextInput"] input,
-[data-testid="stTextArea"] textarea,
-[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
-    background: #0d0f14 !important;
-    border: 1px solid #2a2d38 !important;
-    border-radius: 8px !important;
-    color: #d4c9b8 !important;
-    font-family: 'DM Sans', sans-serif !important;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
-}
-[data-testid="stTextInput"] input:focus,
-[data-testid="stTextArea"] textarea:focus {
-    border-color: #c49c50 !important;
-    box-shadow: 0 0 0 3px rgba(196,156,80,0.12) !important;
-    outline: none !important;
-}
-[data-testid="stTextInput"] label,
-[data-testid="stTextArea"] label,
-[data-testid="stSelectbox"] label,
-[data-testid="stDateInput"] label,
-[data-testid="stRadio"] label {
-    color: #8a8d9a !important;
-    font-size: 0.78rem !important;
-    font-weight: 500 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
-}
-::placeholder { color: #3a3d4a !important; }
-
-/* ── DATE INPUT ── */
-[data-testid="stDateInput"] input {
-    background: #0d0f14 !important;
-    border: 1px solid #2a2d38 !important;
-    border-radius: 8px !important;
-    color: #d4c9b8 !important;
-}
-
-/* ── CHECKBOX ── */
-[data-testid="stCheckbox"] label {
-    color: #d4c9b8 !important;
-    font-size: 0.9rem !important;
-    text-transform: none !important;
-    letter-spacing: 0 !important;
-    font-weight: 400 !important;
-}
-
-/* ── PULSANTI ── */
-[data-testid="stButton"] button {
-    background: #1a1e2a !important;
-    border: 1px solid #2a2d38 !important;
-    color: #c49c50 !important;
-    border-radius: 8px !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.9rem !important;
-    letter-spacing: 0.04em !important;
-    transition: all 0.2s ease !important;
-}
-[data-testid="stButton"] button:hover {
-    background: #222638 !important;
-    border-color: #c49c50 !important;
-    box-shadow: 0 0 12px rgba(196,156,80,0.2) !important;
-    transform: translateY(-1px) !important;
-}
-[data-testid="stButton"] button[kind="primary"] {
-    background: linear-gradient(135deg, #c49c50 0%, #a07830 100%) !important;
-    border: none !important;
-    color: #0d0f14 !important;
-    font-weight: 700 !important;
-    font-size: 1rem !important;
-    letter-spacing: 0.06em !important;
-    box-shadow: 0 4px 16px rgba(196,156,80,0.3) !important;
-}
-[data-testid="stButton"] button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #d4ac60 0%, #b08840 100%) !important;
-    box-shadow: 0 6px 20px rgba(196,156,80,0.45) !important;
-    transform: translateY(-2px) !important;
-}
-
-/* ── LINK BUTTON (WhatsApp) ── */
-[data-testid="stLinkButton"] a {
-    background: linear-gradient(135deg, #1a3a2a 0%, #0f2a1a 100%) !important;
-    border: 1px solid #2a5a3a !important;
-    color: #4ade80 !important;
-    border-radius: 8px !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 0.95rem !important;
-    transition: all 0.2s ease !important;
-    text-decoration: none !important;
-}
-[data-testid="stLinkButton"] a:hover {
-    background: linear-gradient(135deg, #25503a 0%, #1a3a25 100%) !important;
-    border-color: #4ade80 !important;
-    box-shadow: 0 0 14px rgba(74,222,128,0.2) !important;
-}
-
-/* ── ALERT ── */
-[data-testid="stAlert"] {
-    border-radius: 10px !important;
-    border-left-width: 4px !important;
-}
-
-/* ── EXPANDER ── */
-[data-testid="stExpander"] {
-    background: #141720 !important;
-    border: 1px solid #2a2d38 !important;
-    border-radius: 10px !important;
-    overflow: hidden !important;
-}
-[data-testid="stExpander"] summary {
-    background: #1a1e2a !important;
-    color: #c49c50 !important;
-    font-family: 'Rajdhani', sans-serif !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.03em !important;
-    padding: 0.6rem 1rem !important;
-}
-[data-testid="stExpander"] summary:hover {
-    background: #1e2230 !important;
-}
-div[data-testid="stExpander"] div[role="button"] p {
-    font-weight: bold !important;
-    font-size: 1.05rem !important;
-    color: #c49c50 !important;
-}
-
-/* ── DIVIDER ── */
-hr { border-color: #2a2d38 !important; margin: 0.8rem 0 !important; }
-
-/* ── CAPTION ── */
-[data-testid="stCaptionContainer"] p, small {
-    color: #5a5d6a !important;
-    font-size: 0.78rem !important;
-}
-
-/* ── DROPDOWN ── */
-[data-baseweb="popover"] ul {
-    background: #1a1e2a !important;
-    border: 1px solid #2a2d38 !important;
-    border-radius: 8px !important;
-}
-[data-baseweb="popover"] li {
-    color: #d4c9b8 !important;
-    font-family: 'DM Sans', sans-serif !important;
-}
-[data-baseweb="popover"] li:hover {
-    background: rgba(196,156,80,0.1) !important;
-}
-
-/* ── SCROLLBAR ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: #0d0f14; }
-::-webkit-scrollbar-thumb { background: #2a2d38; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #c49c50; }
-
-/* ── TESTO BOLD ── */
-strong { color: #f0d080 !important; }
-
-/* ── TOAST ── */
-[data-testid="stToast"] {
-    background: #1a1e2a !important;
-    border: 1px solid #c49c50 !important;
-    border-radius: 10px !important;
-    color: #d4c9b8 !important;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.5) !important;
-}
-
-/* ── ANIMAZIONE FADE-IN ── */
-[data-testid="stMain"] {
-    animation: fadeInUp 0.4s ease both;
-}
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .block-container {
+        padding-top: 0.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+    div[data-testid="stExpander"] div[role="button"] p, .stTabs button p {
+        font-weight: bold !important;
+        font-size: 1.05rem !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Inizializzazione stato sessione ──
+# Inizializzazione chiavi di stato
 if 'ricerca_attiva' not in st.session_state: st.session_state.ricerca_attiva = False
 if 'edit_mode_id' not in st.session_state: st.session_state.edit_mode_id = None
 
-# ==========================================
-# DATABASE
-# ==========================================
 def inizializza_db():
     with sqlite3.connect('crm_mobile.db') as conn:
         c = conn.cursor()
@@ -364,8 +87,9 @@ def inizializza_db():
                       visita_autonoma INTEGER DEFAULT 0,
                       customer_net_gain INTEGER DEFAULT 0,
                       operazioni_cross_selling INTEGER DEFAULT 0)''')
+        
         try: c.execute("ALTER TABLE visite ADD COLUMN copiato_crm INTEGER DEFAULT 0")
-        except: pass
+        except: pass 
         try: c.execute("ALTER TABLE visite ADD COLUMN referente TEXT DEFAULT ''")
         except: pass
         try: c.execute("ALTER TABLE visite ADD COLUMN telefono TEXT DEFAULT ''")
@@ -380,9 +104,7 @@ def inizializza_db():
 
 inizializza_db()
 
-# ==========================================
-# FUNZIONI DI SUPPORTO
-# ==========================================
+# --- FUNZIONI DI SUPPORTO ---
 def calcola_prossimo_giorno(data_partenza, giorno_obiettivo):
     giorni_mancanti = giorno_obiettivo - data_partenza.weekday()
     if giorni_mancanti <= 0:
@@ -409,12 +131,17 @@ def controllo_backup_automatico():
 
 controllo_backup_automatico()
 
+# --- FUNZIONE CREAZIONE LINK WHATSAPP ---
 def genera_link_wa(agente, cliente, tipo, note):
     numero = NUMERI_AGENTI.get(agente, "")
     if not numero: return ""
+    
+    # Testo pulito, formattato, SENZA EMOJI per evitare troncamenti
     messaggio = f"*RESOCONTO VISITA*\n*Cliente:* {cliente} ({tipo})\n*Note:*\n{note}"
+    
+    # Codifica sicura in UTF-8
     messaggio_url = urllib.parse.quote(messaggio.encode('utf-8'))
-    return f"whatsapp-smb://send?phone={numero}&text={messaggio_url}"
+    return f"https://wa.me/{numero}?text={messaggio_url}"
 
 def salva_visita():
     s = st.session_state
@@ -426,6 +153,7 @@ def salva_visita():
     autonomia = 1 if s.get('autonomia_key', False) else 0
     cng = 1 if s.get('cng_key', False) else 0
     cross = 1 if s.get('cross_key', False) else 0
+    
     if cliente and note:
         with sqlite3.connect('crm_mobile.db') as conn:
             c = conn.cursor()
@@ -433,6 +161,7 @@ def salva_visita():
             data_ord = s.data_key.strftime("%Y-%m-%d")
             scelta = s.get('fup_opt', 'No')
             data_fup = ""
+            
             if scelta in ["1 gg", "7 gg", "15 gg", "30 gg"]:
                 data_fup = (s.data_key + timedelta(days=int(scelta.split()[0]))).strftime("%Y-%m-%d")
             elif scelta == "Alle 17:00":
@@ -440,12 +169,14 @@ def salva_visita():
                 data_fup = ((now + timedelta(days=1)) if now.hour >= 17 else now).strftime("%Y-%m-%d") + " 17:00"
             elif scelta == "Prox. Lunedì": data_fup = calcola_prossimo_giorno(s.data_key, 0)
             elif scelta == "Prox. Venerdì": data_fup = calcola_prossimo_giorno(s.data_key, 4)
-            c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note,
+            
+            c.execute("""INSERT INTO visite (cliente, localita, provincia, tipo_cliente, data, note, 
                                              data_followup, data_ordine, agente, latitudine, longitudine, copiato_crm,
-                                             referente, telefono, visita_autonoma, customer_net_gain, operazioni_cross_selling)
-                                             VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?, ?)""",
+                                             referente, telefono, visita_autonoma, customer_net_gain, operazioni_cross_selling) 
+                                             VALUES (?, '', '', ?, ?, ?, ?, ?, ?, '', '', 0, ?, ?, ?, ?, ?)""", 
                       (cliente, tipo, data_visita_fmt, note, data_fup, data_ord, s.agente_key, referente, telefono, autonomia, cng, cross))
             conn.commit()
+        
         for k in ['cliente_key', 'note_key', 'referente_key', 'telefono_key']: st.session_state[k] = ""
         for k in ['autonomia_key', 'cng_key', 'cross_key']: st.session_state[k] = False
         st.session_state.fup_opt = "No"
@@ -462,38 +193,24 @@ def posticipa_fup_diretto(id_val, giorni):
     nuova_data = (datetime.now() + timedelta(days=giorni)).strftime("%Y-%m-%d")
     aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (nuova_data, id_val))
 
-def set_fup_prox(id_val, gg):
-    aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (calcola_prossimo_giorno(datetime.now(), gg), id_val))
-
-def set_fup_alle_1700(id_val):
+def set_fup_prox(id_val, gg): aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (calcola_prossimo_giorno(datetime.now(), gg), id_val))
+def set_fup_alle_1700(id_val): 
     now = datetime.now()
-    aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?",
-                 (((now + timedelta(days=1)) if now.hour >= 17 else now).strftime("%Y-%m-%d") + " 17:00", id_val))
-
-def azzera_fup(id_val):
-    aggiorna_fup(id_val, "UPDATE visite SET data_followup = '' WHERE id = ?", (id_val,))
+    aggiorna_fup(id_val, "UPDATE visite SET data_followup = ? WHERE id = ?", (((now + timedelta(days=1)) if now.hour >= 17 else now).strftime("%Y-%m-%d") + " 17:00", id_val))
+def azzera_fup(id_val): aggiorna_fup(id_val, "UPDATE visite SET data_followup = '' WHERE id = ?", (id_val,))
 
 def set_edit_mode(id_val): st.session_state.edit_mode_id = id_val
 def cancel_edit(): st.session_state.edit_mode_id = None
 def ask_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = True
 def cancel_delete(id_val): st.session_state[f"confirm_del_{id_val}"] = False
-def toggle_crm_copy(id_val):
-    aggiorna_fup(id_val, "UPDATE visite SET copiato_crm = ? WHERE id = ?",
-                 (1 if st.session_state.get(f"chk_crm_{id_val}", False) else 0, id_val))
+def toggle_crm_copy(id_val): aggiorna_fup(id_val, "UPDATE visite SET copiato_crm = ? WHERE id = ?", (1 if st.session_state.get(f"chk_crm_{id_val}", False) else 0, id_val))
 
 def execute_save_modifica(id_val):
     s = st.session_state
     new_fup = s.get(f"e_dt_{id_val}").strftime("%Y-%m-%d") if s.get(f"e_chk_{id_val}", False) else ""
     with sqlite3.connect('crm_mobile.db') as conn:
-        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?,
-                        referente=?, telefono=?, visita_autonoma=?, customer_net_gain=?, operazioni_cross_selling=?
-                        WHERE id=?""",
-                     (s.get(f"e_cli_{id_val}", ""), s.get(f"e_tp_{id_val}", "Prospect"),
-                      s.get(f"e_note_{id_val}", ""), s.get(f"e_ag_{id_val}", "HSE"), new_fup,
-                      s.get(f"e_ref_{id_val}", ""), s.get(f"e_tel_{id_val}", ""),
-                      1 if s.get(f"e_aut_{id_val}", False) else 0,
-                      1 if s.get(f"e_cng_{id_val}", False) else 0,
-                      1 if s.get(f"e_cross_{id_val}", False) else 0, id_val))
+        conn.execute("""UPDATE visite SET cliente=?, tipo_cliente=?, note=?, agente=?, data_followup=?, referente=?, telefono=?, visita_autonoma=?, customer_net_gain=?, operazioni_cross_selling=? WHERE id=?""",
+                     (s.get(f"e_cli_{id_val}", ""), s.get(f"e_tp_{id_val}", "Prospect"), s.get(f"e_note_{id_val}", ""), s.get(f"e_ag_{id_val}", "HSE"), new_fup, s.get(f"e_ref_{id_val}", ""), s.get(f"e_tel_{id_val}", ""), 1 if s.get(f"e_aut_{id_val}", False) else 0, 1 if s.get(f"e_cng_{id_val}", False) else 0, 1 if s.get(f"e_cross_{id_val}", False) else 0, id_val))
         conn.commit()
     st.session_state.edit_mode_id = None
 
@@ -503,37 +220,33 @@ def execute_delete_visita(id_val):
         conn.commit()
     st.session_state[f"confirm_del_{id_val}"] = False
 
-# ── Carico scadenze ──
 with sqlite3.connect('crm_mobile.db') as conn:
     oggi_limite = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    df_scadenze = pd.read_sql_query(
-        f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
+    df_scadenze = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup <= '{oggi_limite}' ORDER BY data_followup ASC", conn)
 num_scadenze = len(df_scadenze)
 
 # ==========================================
-# INTESTAZIONE CON TITOLO E LOGO
+# INTESTAZIONE CON TITOLO E LOGO 
 # ==========================================
 try:
     with open("logo.jpg", "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode()
+    
     st.markdown(f"""
-    <div style="display:flex;align-items:center;justify-content:flex-start;gap:15px;margin-bottom:20px;">
-        <h1 style="margin:0;padding:0;font-size:2.2rem;display:inline;">💼 CRM Michelone</h1>
-        <img src="data:image/jpeg;base64,{encoded_string}"
-             style="width:60px;height:auto;border-radius:8px;box-shadow:0 0 16px rgba(196,156,80,0.25);">
+    <div style="display: flex; align-items: center; justify-content: flex-start; gap: 15px; margin-bottom: 20px;">
+        <h1 style="margin: 0; padding: 0; font-size: 2.2rem; display: inline;">💼 CRM Michelone</h1>
+        <img src="data:image/jpeg;base64,{encoded_string}" style="width: 60px; height: auto; border-radius: 8px;">
     </div>
     """, unsafe_allow_html=True)
 except Exception:
-    st.title("💼 CRM Michelone")
+    st.title("💼 CRM Michelone") 
 
 if num_scadenze > 0:
     st.error(f"⚠️ Attenzione Michelone! Hai **{num_scadenze}** ricontatti urgenti da gestire.")
 
-st.write("")
+st.write("") 
 
-# ==========================================
-# TABS
-# ==========================================
+# --- TABS ---
 tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova", "⏰ Scadenze", "🔍 Archivio", "⚙️ Setup"])
 
 # ==========================================
@@ -541,22 +254,30 @@ tab_nuova, tab_scadenze, tab_archivio, tab_setup = st.tabs(["➕ Nuova", "⏰ Sc
 # ==========================================
 with tab_nuova:
     st.write("### Compila Dati Incontro")
+    
     with st.container(border=True):
         st.text_input("Nome Cliente", key="cliente_key", placeholder="Scrivi Qui...")
         st.selectbox("Stato Cliente", ["Cliente", "Prospect"], key="tipo_key")
+        
         c_ref, c_tel = st.columns(2)
         with c_ref: st.text_input("Referente", key="referente_key", placeholder="Scrivi Qui...")
         with c_tel: st.text_input("Mail / Tel", key="telefono_key", placeholder="Scrivi Qui...")
+        
         st.markdown("---")
         c_dt, c_ag = st.columns(2)
         with c_dt: st.date_input("Data Visita", datetime.now(), format="DD/MM/YYYY", key="data_key")
         with c_ag: st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], key="agente_key")
+        
         st.markdown("**Dettagli Operativi:**")
         ck1, ck2, ck3 = st.columns(3)
         with ck1: st.checkbox("🚶‍♂️ Autonomia", key="autonomia_key")
         with ck2: st.checkbox("🚀 C. Net Gain", key="cng_key")
         with ck3: st.checkbox("🔄 Cross Selling", key="cross_key")
+        
+        # Le note
         st.text_area("Note / Resoconto", key="note_key", height=200, placeholder="Scrivi Qui...")
+        
+        # --- TASTO WHATSAPP IN INSERIMENTO ---
         st.caption("*(💡 Scrivi le note, clicca fuori dal riquadro per confermarle e poi premi il tasto qui sotto per inviare)*")
         link_wa_nuovo = genera_link_wa(
             st.session_state.get('agente_key', 'HSE'),
@@ -564,11 +285,13 @@ with tab_nuova:
             st.session_state.get('tipo_key', 'Prospect'),
             st.session_state.get('note_key', '')
         )
-        st.link_button("📲 INVIA RESOCONTO SU WA BUSINESS", link_wa_nuovo, use_container_width=True)
+        st.link_button("📲 INVIA RESOCONTO SU WHATSAPP", link_wa_nuovo, use_container_width=True)
+        # -----------------------------------------------
+
         st.markdown("---")
         st.markdown("**📅 Pianifica Ricontatto:**")
-        st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"],
-                 key="fup_opt", horizontal=True, label_visibility="collapsed")
+        st.radio("Scadenza", ["No", "Alle 17:00", "1 gg", "7 gg", "15 gg", "30 gg", "Prox. Lunedì", "Prox. Venerdì"], key="fup_opt", horizontal=True, label_visibility="collapsed")
+        
     st.write("")
     st.button("💾 SALVA NEL CRM MICHELONE", on_click=salva_visita, type="primary", use_container_width=True)
 
@@ -581,6 +304,7 @@ with tab_scadenze:
         for _, row in df_scadenze.iterrows():
             try: row_id = int(float(row['id']))
             except: continue
+
             try:
                 d_scad = datetime.strptime(row['data_followup'][:10], "%Y-%m-%d")
                 giorni_ritardo = (datetime.strptime(oggi, "%Y-%m-%d") - d_scad).days
@@ -592,90 +316,100 @@ with tab_scadenze:
                 st.markdown(f"#### {row['cliente']} ({row['tipo_cliente']})")
                 st.caption(f"⏰ **In Scadenza:** {msg_scadenza}")
                 st.info(f"**Note Ultime:** {row['note']}")
+                
+                # --- NUOVO TASTO WHATSAPP PER PROMEMORIA SCADENZA ---
                 numero_agente = NUMERI_AGENTI.get(row['agente'], "")
                 if numero_agente:
                     msg_wa = f"*PROMEMORIA SCADENZA*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
-                    link_wa = f"whatsapp-smb://send?phone={numero_agente}&text={urllib.parse.quote(msg_wa.encode('utf-8'))}"
-                    st.link_button(f"📲 Ricorda a {row['agente']} su WA Business", link_wa, use_container_width=True)
+                    link_wa = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_wa.encode('utf-8'))}"
+                    st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa, use_container_width=True)
+                # ----------------------------------------------------
+                
                 c1, c2, c3, c4 = st.columns([1, 1, 1, 1.3])
-                with c1: st.button("+1 gg",  key=f"p1_{row_id}",  use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
-                with c2: st.button("+7 gg",  key=f"p7_{row_id}",  use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 7))
+                with c1: st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
+                with c2: st.button("+7 gg", key=f"p7_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 7))
                 with c3: st.button("+15 gg", key=f"p15_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 15))
                 with c4: st.button("✅ Gestito", key=f"ok_{row_id}", type="primary", use_container_width=True, on_click=azzera_fup, args=(row_id,))
+                        
                 c5, c6, c7 = st.columns(3)
-                with c5: st.button("🕔 17:00",     key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_alle_1700, args=(row_id,))
-                with c6: st.button("➡️ Lunedì",   key=f"pl_{row_id}",    use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
-                with c7: st.button("➡️ Venerdì",  key=f"pv_{row_id}",    use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
+                with c5: st.button("🕔 17:00", key=f"o1700_{row_id}", use_container_width=True, on_click=set_fup_alle_1700, args=(row_id,))
+                with c6: st.button("➡️ Lunedì", key=f"pl_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 0))
+                with c7: st.button("➡️ Venerdì", key=f"pv_{row_id}", use_container_width=True, on_click=set_fup_prox, args=(row_id, 4))
     else:
         st.success("🎉 Grandioso! Nessun ricontatto in scadenza, tutto sotto controllo.")
+        
         with sqlite3.connect('crm_mobile.db') as conn:
-            df_future = pd.read_sql_query(
-                f"SELECT * FROM visite WHERE data_followup != '' AND data_followup > '{oggi_limite}' ORDER BY data_followup ASC", conn)
+            df_future = pd.read_sql_query(f"SELECT * FROM visite WHERE data_followup != '' AND data_followup > '{oggi_limite}' ORDER BY data_followup ASC", conn)
+        
         if not df_future.empty:
             st.markdown("---")
             st.markdown("### 🔮 Prossime Scadenze in Arrivo")
             for _, row in df_future.iterrows():
                 fup_str = row['data_followup']
-                dt_fmt = (datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M")
-                          if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y"))
+                dt_fmt = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M") if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+                
                 with st.container(border=True):
                     st.markdown(f"**{row['cliente']}**")
                     st.caption(f"📅 **{dt_fmt}**")
+                    
+                    # --- NUOVO TASTO WHATSAPP PER SCADENZE FUTURE ---
                     numero_agente = NUMERI_AGENTI.get(row['agente'], "")
                     if numero_agente:
                         msg_futuro_wa = f"*PROMEMORIA FUTURO ({dt_fmt})*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
-                        link_wa_futuro = f"whatsapp-smb://send?phone={numero_agente}&text={urllib.parse.quote(msg_futuro_wa.encode('utf-8'))}"
-                        st.link_button(f"📲 Ricorda a {row['agente']} su WA Business", link_wa_futuro, use_container_width=True)
+                        link_wa_futuro = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_futuro_wa.encode('utf-8'))}"
+                        st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa_futuro, use_container_width=True)
+                    # ------------------------------------------------
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
 # ==========================================
 with tab_archivio:
     st.write("### Consulta Database Visite")
-    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...")
-    periodo = st.date_input("Periodo Visita",
-                            [datetime.today().date() - timedelta(days=60), datetime.today().date()],
-                            format="DD/MM/YYYY")
+    
+    t_ricerca = st.text_input("Testo Libero (Cliente o Note)", placeholder="Scrivi Qui...") 
+    periodo = st.date_input("Periodo Visita", [datetime.today().date() - timedelta(days=60), datetime.today().date()], format="DD/MM/YYYY")
+    
     with st.expander("⚙️ Filtri Avanzati (Tocca per aprire)"):
         c_f1, c_f2 = st.columns(2)
         f_agente = c_f1.selectbox("Agente", ["Tutti", "HSE", "BIENNE", "PALAGI", "SARDEGNA"])
-        f_tipo   = c_f2.selectbox("Stato Cliente", ["Tutti", "Prospect", "Cliente"])
+        f_tipo = c_f2.selectbox("Stato Cliente", ["Tutti", "Prospect", "Cliente"])
+        
         c_f3, c_f4 = st.columns(2)
         f_stato_crm = c_f3.selectbox("Salvato su CRM Aziendale", ["Tutti", "Da Caricare", "Caricati"])
         f_referente = c_f4.selectbox("Dati Contatto", ["Tutti", "Con Referente", "Senza"])
+        
         f_autonomia = st.selectbox("Modalità Visita", ["Tutte", "In Autonomia", "In Affiancamento"])
+        
         c_f6, c_f7 = st.columns(2)
-        f_cng   = c_f6.selectbox("🚀 Customer Net Gain", ["Tutti", "Sì", "No"])
+        f_cng = c_f6.selectbox("🚀 Customer Net Gain", ["Tutti", "Sì", "No"])
         f_cross = c_f7.selectbox("🔄 Cross Selling", ["Tutti", "Sì", "No"])
 
     st.write("")
     if st.button("🔎 AVVIA RICERCA", use_container_width=True, type="primary"):
         st.session_state.ricerca_attiva = True
-        st.session_state.edit_mode_id = None
+        st.session_state.edit_mode_id = None 
 
     if st.session_state.ricerca_attiva:
         st.divider()
         with sqlite3.connect('crm_mobile.db') as conn:
             df = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
-
-        if t_ricerca:
-            df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) |
-                    df['note'].str.contains(t_ricerca, case=False, na=False)]
+        
+        if t_ricerca: df = df[df['cliente'].str.contains(t_ricerca, case=False, na=False) | df['note'].str.contains(t_ricerca, case=False, na=False)]
         if f_agente != "Tutti": df = df[df['agente'] == f_agente]
-        if f_tipo   != "Tutti": df = df[df['tipo_cliente'] == f_tipo]
+        if f_tipo != "Tutti": df = df[df['tipo_cliente'] == f_tipo]
         if f_stato_crm == "Da Caricare": df = df[(df['copiato_crm'] == 0) | (df['copiato_crm'].isnull())]
-        elif f_stato_crm == "Caricati":  df = df[df['copiato_crm'] == 1]
+        elif f_stato_crm == "Caricati": df = df[df['copiato_crm'] == 1]
         if f_referente == "Con Referente": df = df[(df['referente'].notnull()) & (df['referente'].str.strip() != '')]
-        elif f_referente == "Senza":       df = df[(df['referente'].isnull())  | (df['referente'].str.strip() == '')]
-        if f_autonomia == "In Autonomia":      df = df[df['visita_autonoma'] == 1]
+        elif f_referente == "Senza": df = df[(df['referente'].isnull()) | (df['referente'].str.strip() == '')]
+        if f_autonomia == "In Autonomia": df = df[df['visita_autonoma'] == 1]
         elif f_autonomia == "In Affiancamento": df = df[(df['visita_autonoma'] == 0) | (df['visita_autonoma'].isnull())]
-        if f_cng == "Sì":   df = df[df['customer_net_gain'] == 1]
+        if f_cng == "Sì": df = df[df['customer_net_gain'] == 1]
         elif f_cng == "No": df = df[(df['customer_net_gain'] == 0) | (df['customer_net_gain'].isnull())]
-        if f_cross == "Sì":   df = df[df['operazioni_cross_selling'] == 1]
+        if f_cross == "Sì": df = df[df['operazioni_cross_selling'] == 1]
         elif f_cross == "No": df = df[(df['operazioni_cross_selling'] == 0) | (df['operazioni_cross_selling'].isnull())]
+
         if isinstance(periodo, (list, tuple)) and len(periodo) == 2:
-            df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) &
-                    (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
+             df = df[(df['data_ordine'] >= periodo[0].strftime("%Y-%m-%d")) & (df['data_ordine'] <= periodo[1].strftime("%Y-%m-%d"))]
 
         if not df.empty:
             c_res1, c_res2 = st.columns([2, 1])
@@ -683,18 +417,24 @@ with tab_archivio:
             if c_res2.button("Chiudi ❌", use_container_width=True):
                 st.session_state.ricerca_attiva = False; st.rerun()
 
-            # Report Excel per Flavio
+            # --- INIZIO CREAZIONE REPORT PER FLAVIO ---
             df_report = pd.DataFrame()
-            df_report['Data']        = df['data']
-            df_report['Agente']      = df['agente']
-            df_report['Cliente']     = df['cliente']
+            df_report['Data'] = df['data']
+            df_report['Agente'] = df['agente']
+            df_report['Cliente'] = df['cliente']
             df_report['Note Visita'] = df['note']
-            df_report['Autonomia']   = df['visita_autonoma'].apply(lambda x: 'X' if x == 1 else '')
-            df_report['CNG']         = df['customer_net_gain'].apply(lambda x: 'X' if x == 1 else '')
+            
+            # Trasformiamo i numeri 1 in "X" e gli 0 in spazi vuoti per Autonomia, CNG e Cross
+            df_report['Autonomia'] = df['visita_autonoma'].apply(lambda x: 'X' if x == 1 else '')
+            df_report['CNG'] = df['customer_net_gain'].apply(lambda x: 'X' if x == 1 else '')
             df_report['Cross Selling'] = df['operazioni_cross_selling'].apply(lambda x: 'X' if x == 1 else '')
+
+            # Creiamo il file Excel in memoria
             output_report = BytesIO()
             with pd.ExcelWriter(output_report, engine='xlsxwriter') as writer:
                 df_report.to_excel(writer, index=False, sheet_name='Report_Flavio')
+
+            # Tasto per scaricare
             st.download_button(
                 label="📊 SCARICA REPORT PER FLAVIO (EXCEL)",
                 data=output_report.getvalue(),
@@ -702,77 +442,83 @@ with tab_archivio:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+            
             st.markdown("---")
+            # --- FINE CREAZIONE REPORT PER FLAVIO ---
 
             for _, row in df.iterrows():
                 try: row_id = int(float(row['id']))
                 except: continue
-                icona_crm    = "✅" if row.get('copiato_crm') == 1 else "⏳"
-                badge_tipo   = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
+                    
+                icona_crm = "✅" if row.get('copiato_crm') == 1 else "⏳"
+                badge_tipo = f"[{row['tipo_cliente']}]" if row['tipo_cliente'] else ""
                 tendina_aperta = (st.session_state.edit_mode_id == row_id) or st.session_state.get(f"confirm_del_{row_id}", False)
-
+                
                 with st.expander(f"{icona_crm} {row['data']} - {row['cliente']} {badge_tipo}", expanded=tendina_aperta):
                     if st.session_state.edit_mode_id == row_id:
                         st.info("✏️ Modifica Dati Attiva")
                         st.text_input("Nome Cliente", value=str(row['cliente'] or ""), placeholder="Scrivi Qui...", key=f"e_cli_{row_id}")
-                        st.selectbox("Stato", ["Prospect", "Cliente"],
-                                     index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
+                        st.selectbox("Stato", ["Prospect", "Cliente"], index=0 if row['tipo_cliente'] == "Prospect" else 1, key=f"e_tp_{row_id}")
+                        
                         c_rt1, c_rt2 = st.columns(2)
                         with c_rt1: st.text_input("Referente", value=str(row.get('referente', '') or ""), placeholder="Scrivi Qui...", key=f"e_ref_{row_id}")
                         with c_rt2: st.text_input("Mail o Telefono", value=str(row.get('telefono', '') or ""), placeholder="Scrivi Qui...", key=f"e_tel_{row_id}")
-                        st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"],
-                                     index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente'])
-                                     if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0,
-                                     key=f"e_ag_{row_id}")
+
+                        st.selectbox("Agente", ["HSE", "BIENNE", "PALAGI", "SARDEGNA"], index=["HSE", "BIENNE", "PALAGI", "SARDEGNA"].index(row['agente']) if row['agente'] in ["HSE", "BIENNE", "PALAGI", "SARDEGNA"] else 0, key=f"e_ag_{row_id}")
+                        
                         ca1, ca2, ca3 = st.columns(3)
-                        with ca1: st.checkbox("🚶‍♂️ Autonomia", value=bool(row.get('visita_autonoma', 0)),       key=f"e_aut_{row_id}")
-                        with ca2: st.checkbox("🚀 C.N.G.",      value=bool(row.get('customer_net_gain', 0)),     key=f"e_cng_{row_id}")
-                        with ca3: st.checkbox("🔄 Cross S.",    value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
-                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=300,
-                                     placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
+                        with ca1: st.checkbox("🚶‍♂️ Autonomia", value=bool(row.get('visita_autonoma', 0)), key=f"e_aut_{row_id}")
+                        with ca2: st.checkbox("🚀 C.N.G.", value=bool(row.get('customer_net_gain', 0)), key=f"e_cng_{row_id}")
+                        with ca3: st.checkbox("🔄 Cross S.", value=bool(row.get('operazioni_cross_selling', 0)), key=f"e_cross_{row_id}")
+                        
+                        st.text_area("Note / Resoconto", value=str(row['note'] or ""), height=300, placeholder="Scrivi Qui...", key=f"e_note_{row_id}")
+                        
                         fup_attuale = row['data_followup']
                         if st.checkbox("Pianifica Ricontatto", value=True if fup_attuale else False, key=f"e_chk_{row_id}"):
-                            st.date_input("Data Ricontatto",
-                                          value=datetime.strptime(fup_attuale[:10], "%Y-%m-%d").date()
-                                          if fup_attuale else datetime.today().date(),
-                                          format="DD/MM/YYYY", key=f"e_dt_{row_id}")
+                            st.date_input("Data Ricontatto", value=datetime.strptime(fup_attuale[:10], "%Y-%m-%d").date() if fup_attuale else datetime.today().date(), format="DD/MM/YYYY", key=f"e_dt_{row_id}")
+
                         cs, cc = st.columns(2)
-                        cs.button("💾 SALVA MODIFICHE", key=f"save_{row_id}", type="primary",
-                                  use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
+                        cs.button("💾 SALVA MODIFICHE", key=f"save_{row_id}", type="primary", use_container_width=True, on_click=execute_save_modifica, args=(row_id,))
                         cc.button("❌ ANNULLA", key=f"canc_{row_id}", use_container_width=True, on_click=cancel_edit)
+                    
                     else:
                         st.write(f"**Agente:** {row['agente']} | **Stato Cliente:** {row['tipo_cliente']}")
+                        
                         tags = []
-                        if row.get('visita_autonoma') == 1:        tags.append("🚶‍♂️ Autonomia")
-                        if row.get('customer_net_gain') == 1:      tags.append("🚀 C. Net Gain")
+                        if row.get('visita_autonoma') == 1: tags.append("🚶‍♂️ Autonomia")
+                        if row.get('customer_net_gain') == 1: tags.append("🚀 C. Net Gain")
                         if row.get('operazioni_cross_selling') == 1: tags.append("🔄 Cross Selling")
                         if tags: st.caption("Etichette: " + " | ".join(tags))
+                        
                         if row.get('referente') or row.get('telefono'):
                             st.write(f"👤 **{row.get('referente', '')}** 📞 {row.get('telefono', '')}")
+                            
                         st.info(f"{row['note']}")
-                        st.checkbox("✅ Salvato nel gestionale aziendale",
-                                    value=(row.get('copiato_crm') == 1),
-                                    key=f"chk_crm_{row_id}", on_change=toggle_crm_copy, args=(row_id,))
+                        st.checkbox("✅ Salvato nel gestionale aziendale", value=(row.get('copiato_crm') == 1), key=f"chk_crm_{row_id}", on_change=toggle_crm_copy, args=(row_id,))
+
                         if row['data_followup']:
                             fup_str = row['data_followup']
-                            dt_fmt = (datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M")
-                                      if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y"))
+                            dt_fmt = datetime.strptime(fup_str, "%Y-%m-%d %H:%M").strftime("%d/%m/%Y alle %H:%M") if ":" in fup_str else datetime.strptime(fup_str, "%Y-%m-%d").strftime("%d/%m/%Y")
                             st.markdown(f"**📅 Ricontatto pianificato il:** {dt_fmt}")
+                        
                         st.write("")
+                        
+                        # --- TASTO WHATSAPP IN ARCHIVIO ---
                         cb_m, cb_w, cb_d = st.columns([1, 1, 1])
-                        cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True,
-                                    on_click=set_edit_mode, args=(row_id,))
+                        
+                        cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True, on_click=set_edit_mode, args=(row_id,))
+                        
                         link_wa_archivio = genera_link_wa(row['agente'], row['cliente'], row['tipo_cliente'], row['note'])
-                        cb_w.link_button("📲 Invia WA Bus.", link_wa_archivio, use_container_width=True)
-                        cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", use_container_width=True,
-                                    on_click=ask_delete, args=(row_id,))
+                        cb_w.link_button("📲 Invia WA", link_wa_archivio, use_container_width=True)
+                        
+                        cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", use_container_width=True, on_click=ask_delete, args=(row_id,))
+                        # -----------------------------------------------------------
+                        
                         if st.session_state.get(f"confirm_del_{row_id}", False):
                             st.warning("⚠️ Confermi l'eliminazione definitiva?")
                             cy, cn = st.columns(2)
-                            cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary",
-                                      use_container_width=True, on_click=execute_delete_visita, args=(row_id,))
-                            cn.button("NO", key=f"no_{row_id}", use_container_width=True,
-                                      on_click=cancel_delete, args=(row_id,))
+                            cy.button("SÌ, ELIMINA", key=f"yes_{row_id}", type="primary", use_container_width=True, on_click=execute_delete_visita, args=(row_id,))
+                            cn.button("NO", key=f"no_{row_id}", use_container_width=True, on_click=cancel_delete, args=(row_id,))
         else:
             st.warning("Nessun risultato trovato con questi filtri.")
 
@@ -782,15 +528,14 @@ with tab_archivio:
 with tab_setup:
     st.write("### Centro Sicurezza e Backup Dati")
     st.info("Utilizza questa sezione per scaricare i backup sul tuo telefono o ripristinarli se cambi dispositivo.")
-
+    
     with sqlite3.connect('crm_mobile.db') as conn:
         df_full = pd.read_sql_query("SELECT * FROM visite ORDER BY data_ordine DESC", conn)
     output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_full.to_excel(writer, index=False)
-    st.download_button("📥 ESPORTA TUTTO IL DB (EXCEL)", output.getvalue(),
-                       "backup_crm_michelone_completo.xlsx", type="primary", use_container_width=True)
-
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer: df_full.to_excel(writer, index=False)
+    
+    st.download_button("📥 ESPORTA TUTTO IL DB (EXCEL)", output.getvalue(), "backup_crm_michelone_completo.xlsx", type="primary", use_container_width=True)
+    
     st.markdown("---")
     st.write("📤 **RIPRISTINO DATI (Sovrascrittura Completa)**")
     st.caption("⚠️ ATTENZIONE: i dati attuali nel telefono verranno cancellati e sostituiti da quelli del file Excel.")
@@ -802,8 +547,8 @@ with tab_setup:
                 if 'cliente' in df_ripristino.columns and 'note' in df_ripristino.columns:
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("DROP TABLE IF EXISTS visite")
-                        conn.execute('''CREATE TABLE visite
-                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conn.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
                                       tipo_cliente TEXT, data TEXT, note TEXT,
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
@@ -814,11 +559,9 @@ with tab_setup:
                     st.success("✅ Database ripristinato con successo! Aggiornamento App in corso...")
                     time.sleep(2)
                     st.rerun()
-                else:
-                    st.error("❌ Il file non sembra un backup valido del CRM.")
-            except Exception as e:
-                st.error(f"Errore durante il ripristino: {e}")
-
+                else: st.error("❌ Il file non sembra un backup valido del CRM.")
+            except Exception as e: st.error(f"Errore durante il ripristino: {e}")
+                
     st.markdown("---")
     st.write("📂 **STORICO BACKUP GIORNALIERI (Dal Server)**")
     cartella_backup = "BACKUPS_AUTOMATICI"
@@ -827,18 +570,19 @@ with tab_setup:
         if files_backup:
             file_selezionato = st.selectbox("Seleziona il backup giornaliero da scaricare:", files_backup)
             with open(os.path.join(cartella_backup, file_selezionato), "rb") as f:
-                st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f,
-                                   file_name=file_selezionato, use_container_width=True)
-            st.write("")
+                st.download_button(label=f"⬇️ SCARICA {file_selezionato}", data=f, file_name=file_selezionato, use_container_width=True)
+            
+            st.write("") 
             ultimo_backup = files_backup[0]
             st.warning(f"🔄 **Ripristino di Emergenza (Ultimo salvataggio: {ultimo_backup})**")
+            
             if st.button("⚠️ RIPRISTINA ORA ALL'ULTIMO BACKUP AUTOMATICO", type="primary", use_container_width=True):
                 try:
                     df_ripristino = pd.read_excel(os.path.join(cartella_backup, ultimo_backup))
                     with sqlite3.connect('crm_mobile.db') as conn:
                         conn.execute("DROP TABLE IF EXISTS visite")
-                        conn.execute('''CREATE TABLE visite
-                                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conn.execute('''CREATE TABLE visite 
+                                     (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                                       cliente TEXT, localita TEXT, provincia TEXT,
                                       tipo_cliente TEXT, data TEXT, note TEXT,
                                       data_followup TEXT, data_ordine TEXT, agente TEXT,
@@ -849,17 +593,14 @@ with tab_setup:
                     st.success(f"✅ Dati ripristinati da {ultimo_backup}! Riavvio app in corso...")
                     time.sleep(2)
                     st.rerun()
-                except Exception as e:
+                except Exception as e: 
                     st.error(f"Errore durante il ripristino: {e}")
-        else:
+
+        else: 
             st.caption("Ancora nessun backup giornaliero automatico generato finora.")
-    else:
+    else: 
         st.caption("La cartella dei backup automatici verrà creata al primo salvataggio giornaliero.")
 
-# ── Footer ──
-st.write("")
-st.markdown(
-    "<p style='text-align:center;color:#3a3d4a;font-size:0.8em;font-weight:bold;letter-spacing:0.1em;'>"
-    "CRM MICHELONE APPROVED</p>",
-    unsafe_allow_html=True
-)
+# Footer Minimal
+st.write("") 
+st.markdown("<p style='text-align: center; color: grey; font-size: 0.8em; font-weight: bold;'>CRM MICHELONE APPROVED</p>", unsafe_allow_html=True)
