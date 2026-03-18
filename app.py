@@ -14,7 +14,7 @@ st.set_page_config(page_title="CRM Michelone", page_icon="💼", layout="centere
 # ==========================================
 # 🔒 SISTEMA DI SICUREZZA E LOGIN
 # ==========================================
-PASSWORD_SEGRETA = "silvia13"  # <-- Cambia questa password come preferisci
+PASSWORD_SEGRETA = "michelone2026"  # <-- Cambia questa password come preferisci
 
 def controlla_password():
     # Se l'utente ha già fatto il login in questa sessione, lo facciamo passare
@@ -131,17 +131,16 @@ def controllo_backup_automatico():
 
 controllo_backup_automatico()
 
-# --- FUNZIONE CREAZIONE LINK WHATSAPP ---
+# --- FUNZIONE CREAZIONE LINK WHATSAPP BUSINESS ---
 def genera_link_wa(agente, cliente, tipo, note):
     numero = NUMERI_AGENTI.get(agente, "")
     if not numero: return ""
     
-    # Testo pulito, formattato, SENZA EMOJI per evitare troncamenti
     messaggio = f"*RESOCONTO VISITA*\n*Cliente:* {cliente} ({tipo})\n*Note:*\n{note}"
-    
-    # Codifica sicura in UTF-8
     messaggio_url = urllib.parse.quote(messaggio.encode('utf-8'))
-    return f"https://wa.me/{numero}?text={messaggio_url}"
+    
+    # Utilizzo il protocollo whatsapp-smb:// specifico per WhatsApp Business
+    return f"whatsapp-smb://send?phone={numero}&text={messaggio_url}"
 
 def salva_visita():
     s = st.session_state
@@ -285,7 +284,7 @@ with tab_nuova:
             st.session_state.get('tipo_key', 'Prospect'),
             st.session_state.get('note_key', '')
         )
-        st.link_button("📲 INVIA RESOCONTO SU WHATSAPP", link_wa_nuovo, use_container_width=True)
+        st.link_button("📲 INVIA RESOCONTO SU WA BUSINESS", link_wa_nuovo, use_container_width=True)
         # -----------------------------------------------
 
         st.markdown("---")
@@ -317,13 +316,14 @@ with tab_scadenze:
                 st.caption(f"⏰ **In Scadenza:** {msg_scadenza}")
                 st.info(f"**Note Ultime:** {row['note']}")
                 
-                # --- NUOVO TASTO WHATSAPP PER PROMEMORIA SCADENZA ---
+                # --- TASTO WHATSAPP BUSINESS PER PROMEMORIA SCADENZA ---
                 numero_agente = NUMERI_AGENTI.get(row['agente'], "")
                 if numero_agente:
                     msg_wa = f"*PROMEMORIA SCADENZA*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
-                    link_wa = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_wa.encode('utf-8'))}"
-                    st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa, use_container_width=True)
-                # ----------------------------------------------------
+                    # Usa whatsapp-smb://
+                    link_wa = f"whatsapp-smb://send?phone={numero_agente}&text={urllib.parse.quote(msg_wa.encode('utf-8'))}"
+                    st.link_button(f"📲 Ricorda a {row['agente']} su WA Business", link_wa, use_container_width=True)
+                # -------------------------------------------------------
                 
                 c1, c2, c3, c4 = st.columns([1, 1, 1, 1.3])
                 with c1: st.button("+1 gg", key=f"p1_{row_id}", use_container_width=True, on_click=posticipa_fup_diretto, args=(row_id, 1))
@@ -352,13 +352,14 @@ with tab_scadenze:
                     st.markdown(f"**{row['cliente']}**")
                     st.caption(f"📅 **{dt_fmt}**")
                     
-                    # --- NUOVO TASTO WHATSAPP PER SCADENZE FUTURE ---
+                    # --- TASTO WHATSAPP BUSINESS PER SCADENZE FUTURE ---
                     numero_agente = NUMERI_AGENTI.get(row['agente'], "")
                     if numero_agente:
                         msg_futuro_wa = f"*PROMEMORIA FUTURO ({dt_fmt})*\n*Data Visita:* {row.get('data', 'N/D')}\n*Cliente:* {row['cliente']}\n*Note:*\n{row['note']}"
-                        link_wa_futuro = f"https://wa.me/{numero_agente}?text={urllib.parse.quote(msg_futuro_wa.encode('utf-8'))}"
-                        st.link_button(f"📲 Ricorda a {row['agente']} su WA", link_wa_futuro, use_container_width=True)
-                    # ------------------------------------------------
+                        # Usa whatsapp-smb://
+                        link_wa_futuro = f"whatsapp-smb://send?phone={numero_agente}&text={urllib.parse.quote(msg_futuro_wa.encode('utf-8'))}"
+                        st.link_button(f"📲 Ricorda a {row['agente']} su WA Business", link_wa_futuro, use_container_width=True)
+                    # ---------------------------------------------------
 
 # ==========================================
 # TAB 3: ARCHIVIO E RICERCA
@@ -509,7 +510,7 @@ with tab_archivio:
                         cb_m.button("✏️ Modifica", key=f"btn_mod_{row_id}", use_container_width=True, on_click=set_edit_mode, args=(row_id,))
                         
                         link_wa_archivio = genera_link_wa(row['agente'], row['cliente'], row['tipo_cliente'], row['note'])
-                        cb_w.link_button("📲 Invia WA", link_wa_archivio, use_container_width=True)
+                        cb_w.link_button("📲 Invia WA Bus.", link_wa_archivio, use_container_width=True)
                         
                         cb_d.button("🗑️ Elimina", key=f"btn_del_{row_id}", use_container_width=True, on_click=ask_delete, args=(row_id,))
                         # -----------------------------------------------------------
